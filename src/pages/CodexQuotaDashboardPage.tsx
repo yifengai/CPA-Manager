@@ -4,7 +4,6 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
-  buildPriorityAccounts,
   buildRefreshReport,
   buildSoonRecoveringAccounts,
   getAccountHealth,
@@ -266,6 +265,7 @@ export function CodexQuotaDashboardPage() {
   const [lastRefreshAt, setLastRefreshAt] = useState(() => readCachedQuota()?.summary.generatedAt ?? '');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
   const [refreshReport, setRefreshReport] = useState<RefreshReport | null>(null);
+  const [healthHeroVisible, setHealthHeroVisible] = useState(true);
   const disabled = connectionStatus !== 'connected';
   const controlsDisabled = disabled || loading || actionFile !== null;
 
@@ -398,8 +398,6 @@ export function CodexQuotaDashboardPage() {
       tokenInvalid: accounts.filter((account) => normalizeQuotaErrorReason(account).includes('Token')),
     };
   }, [data?.accounts]);
-
-  const priorityAccounts = useMemo(() => buildPriorityAccounts(data?.accounts ?? []), [data?.accounts]);
 
   const soonRecoveringAccounts = useMemo(
     () => buildSoonRecoveringAccounts(data?.accounts ?? []),
@@ -720,41 +718,52 @@ export function CodexQuotaDashboardPage() {
 
       {error && <div className={styles.errorBox}>{error}</div>}
 
-      <section className={styles.healthHero}>
-        <div className={styles.healthHeroMain}>
-          <span className={styles.kicker}>账号池健康</span>
-          <strong>{healthHeadline}</strong>
-          <small>{healthDescription}</small>
-        </div>
-        <div className={styles.healthHeroMetrics}>
-          <div>
-            <span>可用率</span>
-            <strong>{availableRate === null ? '-' : `${availableRate}%`}</strong>
+      {healthHeroVisible ? (
+        <section className={styles.healthHero}>
+          <button
+            type="button"
+            className={styles.healthHeroClose}
+            aria-label="关闭账号池健康概览"
+            title="关闭"
+            onClick={() => setHealthHeroVisible(false)}
+          >
+            ×
+          </button>
+          <div className={styles.healthHeroMain}>
+            <span className={styles.kicker}>账号池健康</span>
+            <strong>{healthHeadline}</strong>
+            <small>{healthDescription}</small>
           </div>
-          <div>
-            <span>需处理</span>
-            <strong>{healthCounts.danger}</strong>
+          <div className={styles.healthHeroMetrics}>
+            <div>
+              <span>可用率</span>
+              <strong>{availableRate === null ? '-' : `${availableRate}%`}</strong>
+            </div>
+            <div>
+              <span>需处理</span>
+              <strong>{healthCounts.danger}</strong>
+            </div>
+            <div>
+              <span>即将恢复</span>
+              <strong>{soonRecoveringAccounts.length}</strong>
+            </div>
           </div>
-          <div>
-            <span>即将恢复</span>
-            <strong>{soonRecoveringAccounts.length}</strong>
-          </div>
-        </div>
-        {refreshReport ? (
-          <div className={styles.refreshReport}>
-            <span>最近刷新结果</span>
-            <strong>
-              成功 {refreshReport.availableCount} · 受限 {refreshReport.limitedCount} · 失败{' '}
-              {refreshReport.errorCount}
-            </strong>
-            <small>
-              请求 {refreshReport.requestedCount} 个，返回 {refreshReport.refreshedCount} 个，用时{' '}
-              {refreshReport.durationText}
-              {refreshReport.tokenInvalidCount > 0 ? `，Token失效 ${refreshReport.tokenInvalidCount} 个` : ''}
-            </small>
-          </div>
-        ) : null}
-      </section>
+          {refreshReport ? (
+            <div className={styles.refreshReport}>
+              <span>最近刷新结果</span>
+              <strong>
+                成功 {refreshReport.availableCount} · 受限 {refreshReport.limitedCount} · 失败{' '}
+                {refreshReport.errorCount}
+              </strong>
+              <small>
+                请求 {refreshReport.requestedCount} 个，返回 {refreshReport.refreshedCount} 个，用时{' '}
+                {refreshReport.durationText}
+                {refreshReport.tokenInvalidCount > 0 ? `，Token失效 ${refreshReport.tokenInvalidCount} 个` : ''}
+              </small>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className={styles.summaryGrid} aria-label="账号余量总览">
         {summaryCards.map((card) =>
@@ -787,43 +796,6 @@ export function CodexQuotaDashboardPage() {
       </section>
 
       <section className={styles.insightGrid}>
-        <div className={styles.panel}>
-          <div className={styles.panelTitleRow}>
-            <h2>优先处理</h2>
-            <button type="button" onClick={() => activateQuickFilter('action')}>
-              查看异常
-            </button>
-          </div>
-          {priorityAccounts.length > 0 ? (
-            <div className={styles.priorityList}>
-              {priorityAccounts.map((account) => {
-                const health = getAccountHealth(account);
-                return (
-                  <button
-                    key={account.file}
-                    type="button"
-                    className={styles.priorityItem}
-                    onClick={() => {
-                      activateQuickFilter('all');
-                      setSearch(account.account);
-                    }}
-                  >
-                    <span>
-                      <strong>{health.label}</strong>
-                      <small>{health.reason}</small>
-                    </span>
-                    <em>{account.account}</em>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className={styles.emptyAdvice}>
-              <strong>暂无高优先级问题</strong>
-              <span>刷新后如果出现 Token 失效、受限或低余量账号，会在这里优先展示。</span>
-            </div>
-          )}
-        </div>
         <div className={styles.panel}>
           <h2>当前周期余量分布</h2>
           <div className={styles.bucketList}>
