@@ -65,6 +65,8 @@ const planLabel = (plan: string) => {
   return plan;
 };
 
+const planBadgeLabel = (plan: string) => plan.trim().toLowerCase() || '未知';
+
 const percent = (value?: number | null) =>
   typeof value === 'number' && Number.isFinite(value) ? `${value}%` : '-';
 
@@ -687,26 +689,6 @@ export function CodexQuotaDashboardPage() {
     })
   );
 
-  const summaryCards: Array<{
-    key: string;
-    label: string;
-    value: string | number;
-    meta: string;
-    filter?: QuickFilter;
-  }> = [
-    { key: 'total', label: '账号总数', value: summary?.total ?? '-', meta: '本次纳入统计', filter: 'all' },
-    { key: 'available', label: '可用账号', value: summary?.available ?? '-', meta: '可继续调用', filter: 'available' },
-    { key: 'limited', label: '受限账号', value: summary?.limited ?? '-', meta: '建议暂停使用', filter: 'limited' },
-    { key: 'error', label: '失败/不可用', value: summary?.errors ?? '-', meta: '优先检查 Token', filter: 'error' },
-    { key: 'low', label: '低余量账号', value: summary?.low ?? '-', meta: '剩余 20% 及以下', filter: 'low' },
-    {
-      key: 'average',
-      label: '平均剩余额度',
-      value: typeof summary?.average === 'number' ? `${summary.average}%` : '-',
-      meta: `中位数 ${typeof summary?.median === 'number' ? `${summary.median}%` : '-'}`,
-    },
-  ];
-
   return (
     <div className={styles.container}>
       <div className={styles.pageHeader}>
@@ -796,37 +778,6 @@ export function CodexQuotaDashboardPage() {
       ) : null}
 
       <section className={styles.controlHub}>
-        <div className={styles.controlSection}>
-          <h2>账号余量视图</h2>
-          <div className={styles.summaryCompactGrid}>
-            {summaryCards.map((card) =>
-              card.filter ? (
-                <button
-                  key={card.key}
-                  type="button"
-                  className={[
-                    styles.summaryCompactCard,
-                    quickFilter === card.filter ? styles.activeControlButton : '',
-                  ].filter(Boolean).join(' ')}
-                  aria-pressed={quickFilter === card.filter}
-                  onClick={() => {
-                    if (card.filter) activateQuickFilter(card.filter);
-                  }}
-                >
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                  <small>{card.meta}</small>
-                </button>
-              ) : (
-                <div className={styles.summaryCompactCard} key={card.key}>
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                  <small>{card.meta}</small>
-                </div>
-              )
-            )}
-          </div>
-        </div>
         <div className={styles.controlSection}>
           <h2>账号视图</h2>
           <div className={styles.segmentedButtonGrid}>
@@ -1033,7 +984,7 @@ export function CodexQuotaDashboardPage() {
                 </th>
                 <th>账号与状态</th>
                 <th>当前周期</th>
-                <th>恢复与长周期</th>
+                <th>恢复时间</th>
                 <th>凭证与刷新</th>
                 <th className={styles.actionsColumn}>操作</th>
               </tr>
@@ -1076,6 +1027,7 @@ export function CodexQuotaDashboardPage() {
                         <td>
                           <div className={styles.accountCell}>
                             <div className={styles.accountTitleRow}>
+                              <span className={styles.planBadge}>{planBadgeLabel(account.plan)}</span>
                               <strong>{account.account}</strong>
                               <span className={`${styles.statusPill} ${statusClass(account.status)}`}>
                                 {account.statusText}
@@ -1085,9 +1037,9 @@ export function CodexQuotaDashboardPage() {
                               <span className={`${styles.healthPill} ${styles[`health_${health.tone}`]}`}>
                                 {health.label}
                               </span>
-                              <small>{planLabel(account.plan)} · {account.file}</small>
+                              <small>{account.file}</small>
                             </div>
-                            <small>{health.reason}</small>
+                            {health.tone !== 'good' ? <small>{health.reason}</small> : null}
                             {normalizeQuotaErrorReason(account) !== '-' ? (
                               <em title={account.error}>{normalizeQuotaErrorReason(account)}</em>
                             ) : null}
@@ -1117,8 +1069,6 @@ export function CodexQuotaDashboardPage() {
                         <td>
                           <div className={styles.metricStack}>
                             <span>恢复 {valueOrDash(account.currentResetAt)}</span>
-                            <small>长周期 {valueOrDash(account.longWindowText)}</small>
-                            <small>长周期剩余 {percent(account.longRemainingPercent)}</small>
                           </div>
                         </td>
                         <td>

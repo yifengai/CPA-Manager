@@ -82,7 +82,7 @@ export const getAccountHealth = (account: CodexQuotaAccount): AccountHealth => {
   if (typeof remaining !== 'number') {
     return {
       label: '观察',
-      reason: account.plan?.toLowerCase() === 'free' ? 'Free账号通常无长周期额度' : '余量数据不完整',
+      reason: account.plan?.toLowerCase() === 'free' ? 'Free账号额度不参与统计' : '余量数据不完整',
       tone: 'watch',
       rank: 4,
     };
@@ -99,7 +99,7 @@ export const getAccountHealth = (account: CodexQuotaAccount): AccountHealth => {
 
   return {
     label: '健康',
-    reason: '可继续承接任务',
+    reason: '状态正常',
     tone: 'good',
     rank: 6,
   };

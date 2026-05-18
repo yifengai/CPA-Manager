@@ -219,7 +219,7 @@
 
 .controlHub {
   display: grid;
-  grid-template-columns: minmax(360px, 1.35fr) minmax(210px, 0.8fr) minmax(260px, 1fr) minmax(220px, 0.8fr);
+  grid-template-columns: minmax(240px, 0.85fr) minmax(320px, 1.15fr) minmax(220px, 0.8fr);
   gap: 12px;
   padding: 12px;
 
@@ -472,7 +472,7 @@
 
 .tableWrap table {
   width: 100%;
-  min-width: 980px;
+  min-width: 900px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
@@ -480,7 +480,7 @@
 
 .tableWrap th,
 .tableWrap td {
-  padding: 10px 12px;
+  padding: 7px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--border-color) 76%, transparent);
   text-align: left;
   vertical-align: middle;
@@ -554,7 +554,7 @@
 .accountCell {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 
   strong {
@@ -586,6 +586,20 @@
   flex-wrap: wrap;
 }
 
+.planBadge {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--bg-secondary));
+  color: var(--primary-color);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .accountTitleRow strong {
   overflow: hidden;
   max-width: 360px;
@@ -602,7 +616,7 @@
 
 .metricStack {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 
   small {
@@ -620,7 +634,7 @@
 
 .quotaProgressTrack {
   width: min(220px, 100%);
-  height: 8px;
+  height: 6px;
   overflow: hidden;
   border-radius: 999px;
   background: var(--bg-secondary);
@@ -640,10 +654,10 @@
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  min-height: 24px;
-  padding: 0 8px;
+  min-height: 20px;
+  padding: 0 7px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -693,7 +707,8 @@
   align-items: center;
 
   :global(.btn) {
-    min-width: 34px;
+    min-width: 32px;
+    min-height: 30px;
   }
 }
 
@@ -701,7 +716,7 @@
   position: sticky;
   right: 0;
   z-index: 1;
-  min-width: 166px;
+  min-width: 150px;
   background: var(--bg-primary);
   box-shadow: -8px 0 12px rgba(0, 0, 0, 0.03);
 }
