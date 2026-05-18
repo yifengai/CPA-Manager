@@ -3,7 +3,11 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
-import { getAccountHealth, normalizeQuotaErrorReason } from '@/features/codexQuota/dashboardState';
+import {
+  getAccountHealth,
+  isCodexQuotaUnavailable,
+  normalizeQuotaErrorReason,
+} from '@/features/codexQuota/dashboardState';
 import { codexQuotaApi, type CodexQuotaAccount, type CodexQuotaResponse } from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import styles from './CodexQuotaDashboardPage.module.scss';
@@ -156,7 +160,7 @@ const quickFilterLabel = (filter: QuickFilter) => {
 
 const matchesQuickFilter = (account: CodexQuotaAccount, filter: QuickFilter) => {
   if (filter === 'all') return true;
-  if (filter === 'action') return getAccountHealth(account).tone === 'danger';
+  if (filter === 'action') return isCodexQuotaUnavailable(account);
   if (filter === 'available') return !account.disabled && account.status === 'available';
   if (filter === 'limited') return !account.disabled && account.status === 'limited';
   if (filter === 'error') return !account.disabled && account.status === 'error';
@@ -403,14 +407,6 @@ export function CodexQuotaDashboardPage() {
     return initial;
   }, [data?.accounts]);
 
-  const healthCounts = useMemo(() => {
-    const counts = { good: 0, watch: 0, danger: 0, disabled: 0 };
-    (data?.accounts ?? []).forEach((account) => {
-      counts[getAccountHealth(account).tone] += 1;
-    });
-    return counts;
-  }, [data?.accounts]);
-
   const selectedAccounts = useMemo(() => {
     if (!data || selectedFiles.size === 0) return [];
     return data.accounts.filter((account) => selectedFiles.has(account.file));
@@ -594,7 +590,7 @@ export function CodexQuotaDashboardPage() {
     { filter: 'all', label: '全部', count: summary?.total ?? '-' },
     { filter: 'available', label: '可用', count: summary?.available ?? '-' },
     { filter: 'limited', label: '受限', count: summary?.limited ?? '-' },
-    { filter: 'action', label: '异常', count: healthCounts.danger },
+    { filter: 'action', label: '异常', count: summary?.errors ?? '-' },
     { filter: 'disabled', label: '停用', count: summary?.disabled ?? '-' },
   ];
   const quotaBuckets = summary?.buckets ?? [];

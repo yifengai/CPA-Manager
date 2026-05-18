@@ -23,7 +23,10 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
   if (account.disabled) return '账号已停用';
   const text = `${account.statusText} ${account.error}`.toLowerCase();
   if (!text.trim()) return '-';
-  if (text.includes('token_invalidated') || text.includes('authentication token has been invalidated')) {
+  if (
+    text.includes('token_invalidated') ||
+    text.includes('authentication token has been invalidated')
+  ) {
     return 'Token已失效';
   }
   if (text.includes('401') || text.includes('unauthorized')) return '登录凭证无效';
@@ -34,6 +37,9 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
   if (account.status === 'error') return '查询失败';
   return '-';
 };
+
+export const isCodexQuotaUnavailable = (account: CodexQuotaAccount) =>
+  !account.disabled && account.status === 'error';
 
 export const getAccountHealth = (account: CodexQuotaAccount): AccountHealth => {
   const reason = normalizeQuotaErrorReason(account);
@@ -73,7 +79,10 @@ export const getAccountHealth = (account: CodexQuotaAccount): AccountHealth => {
   ) {
     return {
       label: '建议停用',
-      reason: account.status === 'limited' || account.limitReached ? '当前周期已受限' : '剩余额度不超过10%',
+      reason:
+        account.status === 'limited' || account.limitReached
+          ? '当前周期已受限'
+          : '剩余额度不超过10%',
       tone: 'danger',
       rank: 2,
     };
@@ -125,14 +134,21 @@ export const buildPriorityAccounts = (accounts: CodexQuotaAccount[], limit = 6) 
     })
     .slice(0, limit);
 
-export const buildSoonRecoveringAccounts = (accounts: CodexQuotaAccount[], now = Date.now(), limit = 6) => {
+export const buildSoonRecoveringAccounts = (
+  accounts: CodexQuotaAccount[],
+  now = Date.now(),
+  limit = 6
+) => {
   const threeDays = 3 * 24 * 60 * 60 * 1000;
   return accounts
     .filter((account) => {
       const resetAt = sortableResetTime(account.currentResetAt);
       return resetAt !== Number.MAX_SAFE_INTEGER && resetAt >= now && resetAt <= now + threeDays;
     })
-    .sort((left, right) => sortableResetTime(left.currentResetAt) - sortableResetTime(right.currentResetAt))
+    .sort(
+      (left, right) =>
+        sortableResetTime(left.currentResetAt) - sortableResetTime(right.currentResetAt)
+    )
     .slice(0, limit);
 };
 

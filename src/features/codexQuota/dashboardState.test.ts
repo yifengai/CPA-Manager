@@ -4,6 +4,7 @@ import {
   buildPriorityAccounts,
   buildRefreshReport,
   getAccountHealth,
+  isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
 } from './dashboardState';
 
@@ -52,7 +53,12 @@ describe('codex quota dashboard state', () => {
     const accounts = [
       createAccount({ account: 'healthy@example.com', currentRemainingPercent: 90 }),
       createAccount({ account: 'low@example.com', currentRemainingPercent: 18 }),
-      createAccount({ account: 'limited@example.com', status: 'limited', limitReached: true, currentRemainingPercent: 0 }),
+      createAccount({
+        account: 'limited@example.com',
+        status: 'limited',
+        limitReached: true,
+        currentRemainingPercent: 0,
+      }),
       createAccount({ account: 'disabled@example.com', disabled: true, status: 'disabled' }),
     ];
 
@@ -67,8 +73,17 @@ describe('codex quota dashboard state', () => {
       requestedCount: 3,
       refreshedAccounts: [
         createAccount({ account: 'ok@example.com' }),
-        createAccount({ account: 'limited@example.com', status: 'limited', limitReached: true, currentRemainingPercent: 0 }),
-        createAccount({ account: 'token@example.com', status: 'error', error: 'token_invalidated' }),
+        createAccount({
+          account: 'limited@example.com',
+          status: 'limited',
+          limitReached: true,
+          currentRemainingPercent: 0,
+        }),
+        createAccount({
+          account: 'token@example.com',
+          status: 'error',
+          error: 'token_invalidated',
+        }),
       ],
       startedAt: 1_000,
       endedAt: 2_450,
@@ -82,5 +97,25 @@ describe('codex quota dashboard state', () => {
       tokenInvalidCount: 1,
       durationText: '1.5秒',
     });
+  });
+
+  it('treats only non-disabled query failures as unavailable accounts', () => {
+    expect(
+      isCodexQuotaUnavailable(
+        createAccount({ status: 'error', statusText: 'HTTP 401', error: 'token_invalidated' })
+      )
+    ).toBe(true);
+
+    expect(
+      isCodexQuotaUnavailable(
+        createAccount({ status: 'limited', limitReached: true, currentRemainingPercent: 0 })
+      )
+    ).toBe(false);
+    expect(isCodexQuotaUnavailable(createAccount({ currentRemainingPercent: 5 }))).toBe(false);
+    expect(
+      isCodexQuotaUnavailable(
+        createAccount({ disabled: true, status: 'disabled', error: 'HTTP 401' })
+      )
+    ).toBe(false);
   });
 });
