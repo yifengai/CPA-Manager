@@ -15,7 +15,14 @@ import styles from './CodexQuotaDashboardPage.module.scss';
 type StatusFilter = 'all' | 'available' | 'limited' | 'disabled' | 'error';
 type SortMode = 'remaining-asc' | 'remaining-desc' | 'reset-asc' | 'account-asc';
 type RiskGroupKey = 'needsAction' | 'low' | 'normal' | 'disabled';
-type RecoveryBucketKey = 'hour' | 'today' | 'tomorrow' | 'soon' | 'later' | 'unknown';
+type RecoveryBucketKey =
+  | 'restoredToday'
+  | 'hour'
+  | 'today'
+  | 'tomorrow'
+  | 'soon'
+  | 'later'
+  | 'unknown';
 type QuotaBucketKey = 'zero' | 'low' | 'mid' | 'healthy' | 'full';
 type QuickFilter =
   | 'all'
@@ -47,6 +54,7 @@ const sortOptions = [
 ];
 
 const recoveryBuckets: Array<{ key: RecoveryBucketKey; label: string }> = [
+  { key: 'restoredToday', label: '今天已恢复' },
   { key: 'hour', label: '1小时内恢复' },
   { key: 'today', label: '今天恢复' },
   { key: 'tomorrow', label: '明天恢复' },
@@ -87,6 +95,14 @@ const sortTime = (value: string) => {
   return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
 };
 
+const beijingDateKey = (timeMs: number) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(timeMs));
+
 const statusClass = (status: string) => {
   if (status === 'available') return styles.statusAvailable;
   if (status === 'limited') return styles.statusLimited;
@@ -124,6 +140,7 @@ const recoveryBucketKey = (account: CodexQuotaAccount): RecoveryBucketKey => {
   const now = Date.now();
   const oneHour = 60 * 60 * 1000;
   const oneDay = 24 * oneHour;
+  if (resetAt <= now && beijingDateKey(resetAt) === beijingDateKey(now)) return 'restoredToday';
   if (resetAt <= now + oneHour) return 'hour';
   if (resetAt <= now + oneDay) return 'today';
   if (resetAt <= now + 2 * oneDay) return 'tomorrow';
@@ -401,7 +418,15 @@ export function CodexQuotaDashboardPage() {
   }, [visibleAccounts]);
 
   const recoverySummary = useMemo(() => {
-    const initial = { hour: 0, today: 0, tomorrow: 0, soon: 0, later: 0, unknown: 0 };
+    const initial = {
+      restoredToday: 0,
+      hour: 0,
+      today: 0,
+      tomorrow: 0,
+      soon: 0,
+      later: 0,
+      unknown: 0,
+    };
     (data?.accounts ?? []).forEach((account) => {
       initial[recoveryBucketKey(account)] += 1;
     });
