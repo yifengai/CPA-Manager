@@ -196,6 +196,7 @@
   }
 }
 
+.filterPanel,
 .controlHub,
 .toolbar,
 .tablePanel {
@@ -203,6 +204,33 @@
   border-radius: $radius-lg;
   background: var(--bg-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.035);
+}
+
+.filterPanel {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.filterRow {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+
+  h2 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  @include mobile {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
 }
 
 .controlHub {
@@ -266,11 +294,12 @@
 
 .summaryCompactCard,
 .segmentedButtonGrid button,
-.quotaBucketButtons button {
+.quotaBucketButtons button,
+.filterButtonGroup button {
   appearance: none;
   min-width: 0;
   border: 1px solid var(--border-color);
-  border-radius: $radius-md;
+  border-radius: 999px;
   background: var(--bg-primary);
   cursor: pointer;
   font: inherit;
@@ -279,6 +308,43 @@
     border-color $transition-fast,
     background $transition-fast,
     box-shadow $transition-fast;
+}
+
+.filterButtonGroup {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 1px 0 3px;
+
+  button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    min-height: 32px;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  strong {
+    min-width: 22px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: center;
+  }
 }
 
 .summaryCompactCard {
@@ -334,7 +400,8 @@
 
 .summaryCompactCard:hover,
 .segmentedButtonGrid button:hover,
-.quotaBucketButtons button:hover {
+.quotaBucketButtons button:hover,
+.filterButtonGroup button:hover {
   border-color: color-mix(in srgb, var(--primary-color) 44%, var(--border-color));
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.055);
 }
