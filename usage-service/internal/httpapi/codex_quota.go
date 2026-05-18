@@ -135,6 +135,7 @@ func (s *Server) handleCodexQuotaList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	results := fetchCodexQuotas(r.Context(), accounts)
+	results = autoDisableUnavailableCodexAccounts(s.cfg.CodexAuthDir, results)
 	sort.Slice(results, func(i, j int) bool {
 		left, right := results[i], results[j]
 		if statusRank(left.Status) != statusRank(right.Status) {
@@ -187,6 +188,7 @@ func (s *Server) handleCodexQuotaRefresh(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	results := fetchCodexQuotas(r.Context(), selected)
+	results = autoDisableUnavailableCodexAccounts(s.cfg.CodexAuthDir, results)
 	sort.Slice(results, func(i, j int) bool {
 		return strings.ToLower(results[i].Account) < strings.ToLower(results[j].Account)
 	})
@@ -387,6 +389,34 @@ func fetchCodexQuota(ctx context.Context, account codexAuthFile) codexQuotaAccou
 		base.SortRemaining = float64(*base.CurrentRemainingPercent)
 	}
 	return base
+}
+
+func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAccount) []codexQuotaAccount {
+	updated := make([]codexQuotaAccount, len(accounts))
+	copy(updated, accounts)
+	for index := range updated {
+		account := &updated[index]
+		if account.Disabled || (account.Status != "limited" && account.Status != "error") {
+			continue
+		}
+		originalStatus := account.Status
+		originalText := account.StatusText
+		if _, err := updateCodexAuthDisabled(authDir, account.File, true); err != nil {
+			account.Error = strings.TrimSpace(strings.Join([]string{account.Error, "自动停用失败: " + err.Error()}, " "))
+			continue
+		}
+		account.Disabled = true
+		account.Status = "disabled"
+		if originalStatus == "limited" {
+			account.StatusText = "已自动停用：受限"
+		} else {
+			account.StatusText = "已自动停用：异常"
+		}
+		if strings.TrimSpace(account.Error) == "" {
+			account.Error = originalText
+		}
+	}
+	return updated
 }
 
 func applyWindow(account *codexQuotaAccount, window *codexUsageWindow, primary bool) {
