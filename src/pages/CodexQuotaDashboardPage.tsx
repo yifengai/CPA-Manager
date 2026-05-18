@@ -677,6 +677,15 @@ export function CodexQuotaDashboardPage() {
     { filter: 'recovering', label: '即将恢复', count: soonRecoveringAccounts.length },
     { filter: 'disabled', label: '已停用', count: summary?.disabled ?? '-' },
   ];
+  const quotaBuckets = summary?.buckets ?? [];
+  const quotaBucketMax = Math.max(...quotaBuckets.map((bucket) => bucket.count), 1);
+  const recoveryViews: Array<{ filter: QuickFilter; label: string; count: number }> = recoveryBuckets.map(
+    (bucket) => ({
+      filter: `recovery:${bucket.key}`,
+      label: bucket.label,
+      count: recoverySummary[bucket.key],
+    })
+  );
 
   const summaryCards: Array<{
     key: string;
@@ -748,6 +757,27 @@ export function CodexQuotaDashboardPage() {
               <strong>{soonRecoveringAccounts.length}</strong>
             </div>
           </div>
+          <div className={styles.healthQuotaDistribution}>
+            <span className={styles.kicker}>余量分布</span>
+            <div className={styles.bucketListCompact}>
+              {quotaBuckets.length > 0 ? (
+                quotaBuckets.map((bucket) => (
+                  <div className={styles.bucketRowCompact} key={bucket.label}>
+                    <span>{bucket.label}</span>
+                    <div className={styles.bucketTrack}>
+                      <div
+                        className={styles.bucketFill}
+                        style={{ width: `${(bucket.count / quotaBucketMax) * 100}%` }}
+                      />
+                    </div>
+                    <strong>{bucket.count}</strong>
+                  </div>
+                ))
+              ) : (
+                <small>刷新后显示当前周期余量区间。</small>
+              )}
+            </div>
+          </div>
           {refreshReport ? (
             <div className={styles.refreshReport}>
               <span>最近刷新结果</span>
@@ -765,93 +795,86 @@ export function CodexQuotaDashboardPage() {
         </section>
       ) : null}
 
-      <section className={styles.summaryGrid} aria-label="账号余量总览">
-        {summaryCards.map((card) =>
-          card.filter ? (
-            <button
-              key={card.key}
-              type="button"
-              className={[
-                styles.summaryCard,
-                styles.clickableCard,
-                quickFilter === card.filter ? styles.activeCard : '',
-              ].filter(Boolean).join(' ')}
-              aria-pressed={quickFilter === card.filter}
-              onClick={() => {
-                if (card.filter) activateQuickFilter(card.filter);
-              }}
-            >
-              <span>{card.label}</span>
-              <strong>{card.value}</strong>
-              <small>{card.meta}</small>
-            </button>
-          ) : (
-            <div className={styles.summaryCard} key={card.key}>
-              <span>{card.label}</span>
-              <strong>{card.value}</strong>
-              <small>{card.meta}</small>
-            </div>
-          )
-        )}
-      </section>
-
-      <section className={styles.insightGrid}>
-        <div className={styles.panel}>
-          <h2>当前周期余量分布</h2>
-          <div className={styles.bucketList}>
-            {(summary?.buckets ?? []).map((bucket) => {
-              const max = Math.max(...(summary?.buckets ?? []).map((item) => item.count), 1);
-              return (
-                <div className={styles.bucketRow} key={bucket.label}>
-                  <span>{bucket.label}</span>
-                  <div className={styles.bucketTrack}>
-                    <div
-                      className={styles.bucketFill}
-                      style={{ width: `${(bucket.count / max) * 100}%` }}
-                    />
-                  </div>
-                  <strong>{bucket.count}</strong>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className={styles.panel}>
-          <h2>恢复时间看板</h2>
-          <div className={styles.recoveryGrid}>
-            {recoveryBuckets.map((bucket) => {
-              const filter: QuickFilter = `recovery:${bucket.key}`;
-              return (
+      <section className={styles.controlHub}>
+        <div className={styles.controlSection}>
+          <h2>账号余量视图</h2>
+          <div className={styles.summaryCompactGrid}>
+            {summaryCards.map((card) =>
+              card.filter ? (
                 <button
-                  key={bucket.key}
+                  key={card.key}
                   type="button"
                   className={[
-                    styles.recoveryCard,
-                    quickFilter === filter ? styles.activeCard : '',
+                    styles.summaryCompactCard,
+                    quickFilter === card.filter ? styles.activeControlButton : '',
                   ].filter(Boolean).join(' ')}
-                  aria-pressed={quickFilter === filter}
-                  onClick={() => activateQuickFilter(filter)}
+                  aria-pressed={quickFilter === card.filter}
+                  onClick={() => {
+                    if (card.filter) activateQuickFilter(card.filter);
+                  }}
                 >
-                  <strong>{recoverySummary[bucket.key]}</strong>
-                  <span>{bucket.label}</span>
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <small>{card.meta}</small>
                 </button>
-              );
-            })}
+              ) : (
+                <div className={styles.summaryCompactCard} key={card.key}>
+                  <span>{card.label}</span>
+                  <strong>{card.value}</strong>
+                  <small>{card.meta}</small>
+                </div>
+              )
+            )}
           </div>
-          {soonRecoveringAccounts.length > 0 ? (
-            <button
-              type="button"
-              className={styles.recoveryShortcut}
-              onClick={() => {
-                activateQuickFilter('recovering');
-                setSortMode('reset-asc');
-              }}
-            >
-              按最早恢复查看 {soonRecoveringAccounts.length} 个账号
-            </button>
-          ) : null}
         </div>
-        <div className={styles.panel}>
+        <div className={styles.controlSection}>
+          <h2>账号视图</h2>
+          <div className={styles.segmentedButtonGrid}>
+            {quickViews.map((view) => (
+              <button
+                key={view.filter}
+                type="button"
+                className={quickFilter === view.filter ? styles.activeControlButton : ''}
+                aria-pressed={quickFilter === view.filter}
+                onClick={() => activateQuickFilter(view.filter)}
+              >
+                <span>{view.label}</span>
+                <strong>{view.count}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className={styles.controlSection}>
+          <div className={styles.controlSectionHeader}>
+            <h2>恢复时间</h2>
+            {soonRecoveringAccounts.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  activateQuickFilter('recovering');
+                  setSortMode('reset-asc');
+                }}
+              >
+                最早恢复
+              </button>
+            ) : null}
+          </div>
+          <div className={styles.segmentedButtonGrid}>
+            {recoveryViews.map((view) => (
+              <button
+                key={view.filter}
+                type="button"
+                className={quickFilter === view.filter ? styles.activeControlButton : ''}
+                aria-pressed={quickFilter === view.filter}
+                onClick={() => activateQuickFilter(view.filter)}
+              >
+                <span>{view.label}</span>
+                <strong>{view.count}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className={`${styles.controlSection} ${styles.controlActionsSection}`}>
           <h2>一键建议操作</h2>
           <div className={styles.quickActions}>
             <Button
@@ -909,21 +932,6 @@ export function CodexQuotaDashboardPage() {
             </Button>
           </div>
         </div>
-      </section>
-
-      <section className={styles.viewSwitch} aria-label="账号视图">
-        {quickViews.map((view) => (
-          <button
-            key={view.filter}
-            type="button"
-            className={quickFilter === view.filter ? styles.activeViewButton : ''}
-            aria-pressed={quickFilter === view.filter}
-            onClick={() => activateQuickFilter(view.filter)}
-          >
-            <span>{view.label}</span>
-            <strong>{view.count}</strong>
-          </button>
-        ))}
       </section>
 
       <section className={styles.toolbar}>
@@ -1023,33 +1031,30 @@ export function CodexQuotaDashboardPage() {
                     onChange={toggleAllVisible}
                   />
                 </th>
-                <th>账号信息</th>
-                <th>健康判断</th>
-                <th>当前状态</th>
+                <th>账号与状态</th>
                 <th>当前周期</th>
-                <th>长周期</th>
-                <th>凭证/刷新</th>
-                <th>不可用原因</th>
+                <th>恢复与长周期</th>
+                <th>凭证与刷新</th>
                 <th className={styles.actionsColumn}>操作</th>
               </tr>
             </thead>
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={9} className={styles.emptyCell}>正在加载账号余量...</td>
+                  <td colSpan={6} className={styles.emptyCell}>正在加载账号余量...</td>
                 </tr>
               ) : !data ? (
                 <tr>
-                  <td colSpan={9} className={styles.emptyCell}>点击“刷新余量”开始查询账号状态</td>
+                  <td colSpan={6} className={styles.emptyCell}>点击“刷新余量”开始查询账号状态</td>
                 </tr>
               ) : visibleAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className={styles.emptyCell}>没有匹配的账号</td>
+                  <td colSpan={6} className={styles.emptyCell}>没有匹配的账号</td>
                 </tr>
               ) : (
                 groupedVisibleAccounts.flatMap((group) => [
                   <tr className={styles.groupRow} key={`group-${group.key}`}>
-                    <td colSpan={9}>
+                    <td colSpan={6}>
                       <strong>{group.title}</strong>
                       <span>{group.description}</span>
                       <em>{group.accounts.length} 个</em>
@@ -1070,36 +1075,50 @@ export function CodexQuotaDashboardPage() {
                         </td>
                         <td>
                           <div className={styles.accountCell}>
-                            <strong>{account.account}</strong>
-                            <small>{planLabel(account.plan)} · {account.file}</small>
-                          </div>
-                        </td>
-                        <td>
-                          <div className={styles.healthCell}>
-                            <span className={`${styles.healthPill} ${styles[`health_${health.tone}`]}`}>
-                              {health.label}
-                            </span>
+                            <div className={styles.accountTitleRow}>
+                              <strong>{account.account}</strong>
+                              <span className={`${styles.statusPill} ${statusClass(account.status)}`}>
+                                {account.statusText}
+                              </span>
+                            </div>
+                            <div className={styles.accountMetaRow}>
+                              <span className={`${styles.healthPill} ${styles[`health_${health.tone}`]}`}>
+                                {health.label}
+                              </span>
+                              <small>{planLabel(account.plan)} · {account.file}</small>
+                            </div>
                             <small>{health.reason}</small>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`${styles.statusPill} ${statusClass(account.status)}`}>
-                            {account.statusText}
-                          </span>
-                        </td>
-                        <td>
-                          <div className={styles.metricStack}>
-                            <span className={`${styles.remainingPill} ${remainingClass(account)}`}>
-                              剩余 {percent(account.currentRemainingPercent)}
-                            </span>
-                            <small>已用 {percent(account.currentUsedPercent)}</small>
-                            <small>恢复 {valueOrDash(account.currentResetAt)}</small>
+                            {normalizeQuotaErrorReason(account) !== '-' ? (
+                              <em title={account.error}>{normalizeQuotaErrorReason(account)}</em>
+                            ) : null}
                           </div>
                         </td>
                         <td>
                           <div className={styles.metricStack}>
-                            <strong>{valueOrDash(account.longWindowText)}</strong>
-                            <small>剩余 {percent(account.longRemainingPercent)}</small>
+                            <div className={styles.metricPrimaryRow}>
+                              <span className={`${styles.remainingPill} ${remainingClass(account)}`}>
+                                剩余 {percent(account.currentRemainingPercent)}
+                              </span>
+                              <small>已用 {percent(account.currentUsedPercent)}</small>
+                            </div>
+                            <div className={styles.quotaProgressTrack}>
+                              <span
+                                className={styles.quotaProgressBar}
+                                style={{
+                                  width:
+                                    typeof account.currentRemainingPercent === 'number'
+                                      ? `${Math.max(0, Math.min(100, account.currentRemainingPercent))}%`
+                                      : '0%',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className={styles.metricStack}>
+                            <span>恢复 {valueOrDash(account.currentResetAt)}</span>
+                            <small>长周期 {valueOrDash(account.longWindowText)}</small>
+                            <small>长周期剩余 {percent(account.longRemainingPercent)}</small>
                           </div>
                         </td>
                         <td>
@@ -1107,9 +1126,6 @@ export function CodexQuotaDashboardPage() {
                             <span>过期 {valueOrDash(account.tokenExpiredAt)}</span>
                             <small>刷新 {valueOrDash(account.lastRefreshAt)}</small>
                           </div>
-                        </td>
-                        <td className={styles.errorText} title={account.error}>
-                          {normalizeQuotaErrorReason(account)}
                         </td>
                         <td className={styles.actionsColumn}>
                           <div className={styles.actions}>
