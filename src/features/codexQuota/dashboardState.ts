@@ -19,6 +19,14 @@ export interface RefreshReport {
   durationText: string;
 }
 
+export interface TodayRestoredAccount {
+  file: string;
+  account: string;
+  restoredAt: string;
+  detectedAt: string;
+  resetAfter: string;
+}
+
 export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
   if (account.disabled) return '账号已停用';
   const text = `${account.statusText} ${account.error}`.toLowerCase();
@@ -118,6 +126,79 @@ const sortableResetTime = (value: string) => {
   if (!value) return Number.MAX_SAFE_INTEGER;
   const parsed = Date.parse(value.replace(' ', 'T') + '+08:00');
   return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+};
+
+const beijingDateKey = (timeMs: number) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(timeMs));
+
+const formatBeijingDateTime = (timeMs: number) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(timeMs));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}:${values.second}`;
+};
+
+export const buildTodayRestoredHistory = ({
+  previousAccounts,
+  nextAccounts,
+  existingHistory,
+  now = Date.now(),
+}: {
+  previousAccounts: CodexQuotaAccount[];
+  nextAccounts: CodexQuotaAccount[];
+  existingHistory: TodayRestoredAccount[];
+  now?: number;
+}) => {
+  const today = beijingDateKey(now);
+  const nextByFile = new Map(nextAccounts.map((account) => [account.file, account]));
+  const deduped = new Map<string, TodayRestoredAccount>();
+
+  existingHistory.forEach((record) => {
+    const restoredAt = sortableResetTime(record.restoredAt);
+    if (restoredAt === Number.MAX_SAFE_INTEGER || beijingDateKey(restoredAt) !== today) return;
+    deduped.set(`${record.file}:${record.restoredAt}`, record);
+  });
+
+  previousAccounts.forEach((previous) => {
+    const previousResetAt = sortableResetTime(previous.currentResetAt);
+    if (
+      previousResetAt === Number.MAX_SAFE_INTEGER ||
+      previousResetAt > now ||
+      beijingDateKey(previousResetAt) !== today
+    ) {
+      return;
+    }
+
+    const next = nextByFile.get(previous.file);
+    if (!next || next.currentResetAt === previous.currentResetAt) return;
+    const nextResetAt = sortableResetTime(next.currentResetAt);
+    if (nextResetAt === Number.MAX_SAFE_INTEGER || nextResetAt <= now) return;
+
+    deduped.set(`${previous.file}:${previous.currentResetAt}`, {
+      file: previous.file,
+      account: next.account || previous.account,
+      restoredAt: previous.currentResetAt,
+      detectedAt: formatBeijingDateTime(now),
+      resetAfter: next.currentResetAt,
+    });
+  });
+
+  return Array.from(deduped.values()).sort(
+    (left, right) => sortableResetTime(right.restoredAt) - sortableResetTime(left.restoredAt)
+  );
 };
 
 export const buildPriorityAccounts = (accounts: CodexQuotaAccount[], limit = 6) =>

@@ -3,6 +3,7 @@ import type { CodexQuotaAccount } from '@/services/api';
 import {
   buildPriorityAccounts,
   buildRefreshReport,
+  buildTodayRestoredHistory,
   getAccountHealth,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
@@ -117,5 +118,93 @@ describe('codex quota dashboard state', () => {
         createAccount({ disabled: true, status: 'disabled', error: 'HTTP 401' })
       )
     ).toBe(false);
+  });
+
+  it('keeps accounts in today restored history after the reset time rolls to the next window', () => {
+    const previous = [
+      createAccount({
+        file: 'restored.json',
+        account: 'restored@example.com',
+        currentResetAt: '2026-05-18 15:45:54',
+      }),
+      createAccount({
+        file: 'future.json',
+        account: 'future@example.com',
+        currentResetAt: '2026-05-18 20:00:00',
+      }),
+    ];
+    const next = [
+      createAccount({
+        file: 'restored.json',
+        account: 'restored@example.com',
+        currentResetAt: '2026-05-25 16:30:00',
+      }),
+      createAccount({
+        file: 'future.json',
+        account: 'future@example.com',
+        currentResetAt: '2026-05-18 20:00:00',
+      }),
+    ];
+
+    const history = buildTodayRestoredHistory({
+      previousAccounts: previous,
+      nextAccounts: next,
+      existingHistory: [],
+      now: Date.parse('2026-05-18T16:30:00+08:00'),
+    });
+
+    expect(history).toEqual([
+      {
+        file: 'restored.json',
+        account: 'restored@example.com',
+        restoredAt: '2026-05-18 15:45:54',
+        detectedAt: '2026-05-18 16:30:00',
+        resetAfter: '2026-05-25 16:30:00',
+      },
+    ]);
+  });
+
+  it('keeps only today restored history and deduplicates repeated refreshes', () => {
+    const existingHistory = [
+      {
+        file: 'restored.json',
+        account: 'restored@example.com',
+        restoredAt: '2026-05-18 15:45:54',
+        detectedAt: '2026-05-18 16:20:00',
+        resetAfter: '2026-05-25 16:20:00',
+      },
+      {
+        file: 'old.json',
+        account: 'old@example.com',
+        restoredAt: '2026-05-17 15:45:54',
+        detectedAt: '2026-05-17 16:20:00',
+        resetAfter: '2026-05-24 16:20:00',
+      },
+    ];
+
+    const history = buildTodayRestoredHistory({
+      previousAccounts: [
+        createAccount({
+          file: 'restored.json',
+          account: 'restored@example.com',
+          currentResetAt: '2026-05-18 15:45:54',
+        }),
+      ],
+      nextAccounts: [
+        createAccount({
+          file: 'restored.json',
+          account: 'restored@example.com',
+          currentResetAt: '2026-05-25 16:30:00',
+        }),
+      ],
+      existingHistory,
+      now: Date.parse('2026-05-18T16:30:00+08:00'),
+    });
+
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      file: 'restored.json',
+      restoredAt: '2026-05-18 15:45:54',
+    });
   });
 });

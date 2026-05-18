@@ -4,9 +4,11 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
+  buildTodayRestoredHistory,
   getAccountHealth,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
+  type TodayRestoredAccount,
 } from '@/features/codexQuota/dashboardState';
 import { codexQuotaApi, type CodexQuotaAccount, type CodexQuotaResponse } from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
@@ -37,6 +39,7 @@ type QuickFilter =
   | `recovery:${RecoveryBucketKey}`;
 
 const quotaCacheKey = 'cpa-manager:codex-quota:last-snapshot:v1';
+const todayRestoredHistoryCacheKey = 'cpa-manager:codex-quota:today-restored-history:v1';
 
 const statusOptions = [
   { value: 'all', label: '全部状态' },
@@ -175,7 +178,11 @@ const quickFilterLabel = (filter: QuickFilter) => {
   return bucket ? bucket.label : '全部账号';
 };
 
-const matchesQuickFilter = (account: CodexQuotaAccount, filter: QuickFilter) => {
+const matchesQuickFilter = (
+  account: CodexQuotaAccount,
+  filter: QuickFilter,
+  todayRestoredFiles: Set<string> = new Set()
+) => {
   if (filter === 'all') return true;
   if (filter === 'action') return isCodexQuotaUnavailable(account);
   if (filter === 'available') return !account.disabled && account.status === 'available';
@@ -192,6 +199,9 @@ const matchesQuickFilter = (account: CodexQuotaAccount, filter: QuickFilter) => 
   }
   if (filter === 'disabled') return account.disabled || account.status === 'disabled';
   if (filter.startsWith('quota:')) return filter === `quota:${quotaBucketKey(account)}`;
+  if (filter === 'recovery:restoredToday') {
+    return recoveryBucketKey(account) === 'restoredToday' || todayRestoredFiles.has(account.file);
+  }
   return filter === `recovery:${recoveryBucketKey(account)}`;
 };
 
@@ -287,12 +297,45 @@ const writeCachedQuota = (payload: CodexQuotaResponse) => {
   }
 };
 
+const readCachedTodayRestoredHistory = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(todayRestoredHistoryCacheKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as TodayRestoredAccount[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (record) =>
+        record &&
+        typeof record.file === 'string' &&
+        typeof record.account === 'string' &&
+        typeof record.restoredAt === 'string' &&
+        typeof record.detectedAt === 'string' &&
+        typeof record.resetAfter === 'string'
+    );
+  } catch {
+    return [];
+  }
+};
+
+const writeCachedTodayRestoredHistory = (payload: TodayRestoredAccount[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(todayRestoredHistoryCacheKey, JSON.stringify(payload));
+  } catch {
+    // localStorage may be unavailable in private mode; the page still works without history cache.
+  }
+};
+
 export function CodexQuotaDashboardPage() {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
 
   const [data, setData] = useState<CodexQuotaResponse | null>(() => readCachedQuota());
+  const [todayRestoredHistory, setTodayRestoredHistory] = useState<TodayRestoredAccount[]>(() =>
+    readCachedTodayRestoredHistory()
+  );
   const [loading, setLoading] = useState(false);
   const [clearingFailedUsage, setClearingFailedUsage] = useState(false);
   const [actionFile, setActionFile] = useState<string | null>(null);
@@ -322,8 +365,15 @@ export function CodexQuotaDashboardPage() {
     setError('');
     try {
       const response = await codexQuotaApi.list();
+      const nextHistory = buildTodayRestoredHistory({
+        previousAccounts: data?.accounts ?? [],
+        nextAccounts: response.accounts,
+        existingHistory: todayRestoredHistory,
+      });
       setData(response);
+      setTodayRestoredHistory(nextHistory);
       writeCachedQuota(response);
+      writeCachedTodayRestoredHistory(nextHistory);
       setLastRefreshAt(response.summary.generatedAt);
       setSelectedFiles((previous) => {
         const existing = new Set(response.accounts.map((account) => account.file));
@@ -339,7 +389,7 @@ export function CodexQuotaDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [data?.accounts, todayRestoredHistory]);
 
   const planOptions = useMemo(() => {
     const plans = new Set<string>();
@@ -354,10 +404,28 @@ export function CodexQuotaDashboardPage() {
     ];
   }, [data?.accounts]);
 
+  const todayRestoredFiles = useMemo(() => {
+    const files = new Set<string>();
+    const existingFiles = new Set<string>();
+    (data?.accounts ?? []).forEach((account) => {
+      existingFiles.add(account.file);
+      if (recoveryBucketKey(account) === 'restoredToday') files.add(account.file);
+    });
+    todayRestoredHistory.forEach((record) => {
+      if (existingFiles.has(record.file)) files.add(record.file);
+    });
+    return files;
+  }, [data?.accounts, todayRestoredHistory]);
+
+  const todayRestoredRecords = useMemo(
+    () => new Map(todayRestoredHistory.map((record) => [record.file, record])),
+    [todayRestoredHistory]
+  );
+
   const visibleAccounts = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = (data?.accounts ?? []).filter((account) => {
-      if (!matchesQuickFilter(account, quickFilter)) return false;
+      if (!matchesQuickFilter(account, quickFilter, todayRestoredFiles)) return false;
       if (statusFilter !== 'all' && account.status !== statusFilter) return false;
       if (planFilter !== 'all' && (account.plan || '未知') !== planFilter) return false;
       if (!query) return true;
@@ -386,7 +454,7 @@ export function CodexQuotaDashboardPage() {
       }
       return (left.currentRemainingPercent ?? 999) - (right.currentRemainingPercent ?? 999);
     });
-  }, [data?.accounts, planFilter, quickFilter, search, sortMode, statusFilter]);
+  }, [data?.accounts, planFilter, quickFilter, search, sortMode, statusFilter, todayRestoredFiles]);
 
   const groupedVisibleAccounts = useMemo(() => {
     const groups: Array<{
@@ -430,8 +498,9 @@ export function CodexQuotaDashboardPage() {
     (data?.accounts ?? []).forEach((account) => {
       initial[recoveryBucketKey(account)] += 1;
     });
+    initial.restoredToday = todayRestoredFiles.size;
     return initial;
-  }, [data?.accounts]);
+  }, [data?.accounts, todayRestoredFiles]);
 
   const selectedAccounts = useMemo(() => {
     if (!data || selectedFiles.size === 0) return [];
@@ -533,8 +602,15 @@ export function CodexQuotaDashboardPage() {
       const summary = buildClientSummary(accounts);
       summary.generatedAt = response.summary.generatedAt;
       const mergedPayload = { summary, accounts };
+      const nextHistory = buildTodayRestoredHistory({
+        previousAccounts: data.accounts,
+        nextAccounts: accounts,
+        existingHistory: todayRestoredHistory,
+      });
       setData(mergedPayload);
+      setTodayRestoredHistory(nextHistory);
       writeCachedQuota(mergedPayload);
+      writeCachedTodayRestoredHistory(nextHistory);
       setLastRefreshAt(response.summary.generatedAt);
       setSelectedFiles((previous) => {
         const existing = new Set(accounts.map((account) => account.file));
@@ -872,6 +948,7 @@ export function CodexQuotaDashboardPage() {
                   </tr>,
                   ...group.accounts.map((account) => {
                     const health = getAccountHealth(account);
+                    const restoredRecord = todayRestoredRecords.get(account.file);
                     return (
                       <tr key={account.file}>
                         <td className={styles.selectColumn}>
@@ -935,6 +1012,12 @@ export function CodexQuotaDashboardPage() {
                         <td>
                           <div className={styles.metricStack}>
                             <span>恢复 {valueOrDash(account.currentResetAt)}</span>
+                            {restoredRecord ? (
+                              <small>
+                                今日已恢复 {restoredRecord.restoredAt}，新周期{' '}
+                                {restoredRecord.resetAfter}
+                              </small>
+                            ) : null}
                           </div>
                         </td>
                         <td>
