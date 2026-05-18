@@ -1,6 +1,18 @@
 import type { CodexQuotaAccount } from '@/services/api';
 
 export type AccountHealthTone = 'good' | 'watch' | 'danger' | 'disabled';
+export type RecoveryDayBucketKey =
+  | 'restored'
+  | 'today'
+  | 'tomorrow'
+  | 'day2'
+  | 'day3'
+  | 'day4'
+  | 'day5'
+  | 'day6'
+  | 'day7'
+  | 'later'
+  | 'unknown';
 
 export interface AccountHealth {
   label: string;
@@ -135,6 +147,24 @@ const beijingDateKey = (timeMs: number) =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date(timeMs));
+
+const beijingDayStart = (timeMs: number) => Date.parse(`${beijingDateKey(timeMs)}T00:00:00+08:00`);
+
+export const getRecoveryDayBucketKey = (
+  resetAtText: string,
+  now = Date.now()
+): RecoveryDayBucketKey => {
+  const resetAt = sortableResetTime(resetAtText);
+  if (resetAt === Number.MAX_SAFE_INTEGER) return 'unknown';
+  if (resetAt <= now) return 'restored';
+
+  const oneDay = 24 * 60 * 60 * 1000;
+  const dayDiff = Math.round((beijingDayStart(resetAt) - beijingDayStart(now)) / oneDay);
+  if (dayDiff <= 0) return 'today';
+  if (dayDiff === 1) return 'tomorrow';
+  if (dayDiff >= 2 && dayDiff <= 7) return `day${dayDiff}` as RecoveryDayBucketKey;
+  return 'later';
+};
 
 const formatBeijingDateTime = (timeMs: number) => {
   const parts = new Intl.DateTimeFormat('en-CA', {

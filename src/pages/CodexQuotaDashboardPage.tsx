@@ -5,9 +5,11 @@ import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
   buildTodayRestoredHistory,
+  getRecoveryDayBucketKey,
   getAccountHealth,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
+  type RecoveryDayBucketKey,
   type TodayRestoredAccount,
 } from '@/features/codexQuota/dashboardState';
 import { codexQuotaApi, type CodexQuotaAccount, type CodexQuotaResponse } from '@/services/api';
@@ -17,14 +19,6 @@ import styles from './CodexQuotaDashboardPage.module.scss';
 type StatusFilter = 'all' | 'available' | 'limited' | 'disabled' | 'error';
 type SortMode = 'remaining-asc' | 'remaining-desc' | 'reset-asc' | 'account-asc';
 type RiskGroupKey = 'needsAction' | 'low' | 'normal' | 'disabled';
-type RecoveryBucketKey =
-  | 'restoredToday'
-  | 'hour'
-  | 'today'
-  | 'tomorrow'
-  | 'soon'
-  | 'later'
-  | 'unknown';
 type QuotaBucketKey = 'zero' | 'low' | 'mid' | 'healthy' | 'full';
 type QuickFilter =
   | 'all'
@@ -36,7 +30,7 @@ type QuickFilter =
   | 'recovering'
   | 'disabled'
   | `quota:${QuotaBucketKey}`
-  | `recovery:${RecoveryBucketKey}`;
+  | `recovery:${RecoveryDayBucketKey}`;
 
 const quotaCacheKey = 'cpa-manager:codex-quota:last-snapshot:v1';
 const todayRestoredHistoryCacheKey = 'cpa-manager:codex-quota:today-restored-history:v1';
@@ -56,14 +50,18 @@ const sortOptions = [
   { value: 'account-asc', label: '账号名称 A-Z' },
 ];
 
-const recoveryBuckets: Array<{ key: RecoveryBucketKey; label: string }> = [
-  { key: 'restoredToday', label: '今天已恢复' },
-  { key: 'hour', label: '1小时内恢复' },
-  { key: 'today', label: '今天恢复' },
-  { key: 'tomorrow', label: '明天恢复' },
-  { key: 'soon', label: '3天内恢复' },
-  { key: 'later', label: '超过3天' },
-  { key: 'unknown', label: '未知/不适用' },
+const recoveryBuckets: Array<{ key: RecoveryDayBucketKey; label: string }> = [
+  { key: 'restored', label: '已恢复' },
+  { key: 'today', label: '今天' },
+  { key: 'tomorrow', label: '明天' },
+  { key: 'day2', label: '2天后' },
+  { key: 'day3', label: '3天后' },
+  { key: 'day4', label: '4天后' },
+  { key: 'day5', label: '5天后' },
+  { key: 'day6', label: '6天后' },
+  { key: 'day7', label: '7天后' },
+  { key: 'later', label: '7天以上' },
+  { key: 'unknown', label: '未知' },
 ];
 
 const quotaBucketDefinitions: Array<{ key: QuotaBucketKey; label: string }> = [
@@ -98,14 +96,6 @@ const sortTime = (value: string) => {
   return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
 };
 
-const beijingDateKey = (timeMs: number) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(timeMs));
-
 const statusClass = (status: string) => {
   if (status === 'available') return styles.statusAvailable;
   if (status === 'limited') return styles.statusLimited;
@@ -135,20 +125,6 @@ const riskGroupKey = (account: CodexQuotaAccount): RiskGroupKey => {
   }
   if (typeof remaining === 'number' && remaining <= 20) return 'low';
   return 'normal';
-};
-
-const recoveryBucketKey = (account: CodexQuotaAccount): RecoveryBucketKey => {
-  const resetAt = sortTime(account.currentResetAt);
-  if (resetAt === Number.MAX_SAFE_INTEGER) return 'unknown';
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-  const oneDay = 24 * oneHour;
-  if (resetAt <= now && beijingDateKey(resetAt) === beijingDateKey(now)) return 'restoredToday';
-  if (resetAt <= now + oneHour) return 'hour';
-  if (resetAt <= now + oneDay) return 'today';
-  if (resetAt <= now + 2 * oneDay) return 'tomorrow';
-  if (resetAt > now + 3 * oneDay) return 'later';
-  return 'soon';
 };
 
 const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
@@ -194,15 +170,15 @@ const matchesQuickFilter = (
     );
   }
   if (filter === 'recovering') {
-    const bucket = recoveryBucketKey(account);
-    return bucket === 'hour' || bucket === 'today' || bucket === 'tomorrow' || bucket === 'soon';
+    const bucket = getRecoveryDayBucketKey(account.currentResetAt);
+    return bucket !== 'restored' && bucket !== 'later' && bucket !== 'unknown';
   }
   if (filter === 'disabled') return account.disabled || account.status === 'disabled';
   if (filter.startsWith('quota:')) return filter === `quota:${quotaBucketKey(account)}`;
-  if (filter === 'recovery:restoredToday') {
-    return recoveryBucketKey(account) === 'restoredToday' || todayRestoredFiles.has(account.file);
+  if (filter === 'recovery:restored') {
+    return getRecoveryDayBucketKey(account.currentResetAt) === 'restored' || todayRestoredFiles.has(account.file);
   }
-  return filter === `recovery:${recoveryBucketKey(account)}`;
+  return filter === `recovery:${getRecoveryDayBucketKey(account.currentResetAt)}`;
 };
 
 const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['summary'] => {
@@ -409,7 +385,7 @@ export function CodexQuotaDashboardPage() {
     const existingFiles = new Set<string>();
     (data?.accounts ?? []).forEach((account) => {
       existingFiles.add(account.file);
-      if (recoveryBucketKey(account) === 'restoredToday') files.add(account.file);
+      if (getRecoveryDayBucketKey(account.currentResetAt) === 'restored') files.add(account.file);
     });
     todayRestoredHistory.forEach((record) => {
       if (existingFiles.has(record.file)) files.add(record.file);
@@ -494,19 +470,23 @@ export function CodexQuotaDashboardPage() {
   }, [visibleAccounts]);
 
   const recoverySummary = useMemo(() => {
-    const initial = {
-      restoredToday: 0,
-      hour: 0,
+    const initial: Record<RecoveryDayBucketKey, number> = {
+      restored: 0,
       today: 0,
       tomorrow: 0,
-      soon: 0,
+      day2: 0,
+      day3: 0,
+      day4: 0,
+      day5: 0,
+      day6: 0,
+      day7: 0,
       later: 0,
       unknown: 0,
     };
     (data?.accounts ?? []).forEach((account) => {
-      initial[recoveryBucketKey(account)] += 1;
+      initial[getRecoveryDayBucketKey(account.currentResetAt)] += 1;
     });
-    initial.restoredToday = todayRestoredFiles.size;
+    initial.restored = todayRestoredFiles.size;
     return initial;
   }, [data?.accounts, todayRestoredFiles]);
 

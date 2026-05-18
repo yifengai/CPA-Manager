@@ -5,6 +5,7 @@ import {
   buildRefreshReport,
   buildTodayRestoredHistory,
   getAccountHealth,
+  getRecoveryDayBucketKey,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
 } from './dashboardState';
@@ -208,4 +209,15 @@ describe('codex quota dashboard state', () => {
     });
   });
 
+  it('groups recovery times by Beijing natural day distance', () => {
+    const now = Date.parse('2026-05-18T17:30:00+08:00');
+
+    expect(getRecoveryDayBucketKey('2026-05-18 16:30:00', now)).toBe('restored');
+    expect(getRecoveryDayBucketKey('2026-05-18 23:59:59', now)).toBe('today');
+    expect(getRecoveryDayBucketKey('2026-05-19 00:00:00', now)).toBe('tomorrow');
+    expect(getRecoveryDayBucketKey('2026-05-20 09:00:00', now)).toBe('day2');
+    expect(getRecoveryDayBucketKey('2026-05-25 09:00:00', now)).toBe('day7');
+    expect(getRecoveryDayBucketKey('2026-05-26 09:00:00', now)).toBe('later');
+    expect(getRecoveryDayBucketKey('', now)).toBe('unknown');
+  });
 });
