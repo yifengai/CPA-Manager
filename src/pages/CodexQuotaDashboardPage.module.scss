@@ -61,6 +61,82 @@
   font-size: 14px;
 }
 
+.healthHero {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.3fr) minmax(280px, 1fr) minmax(260px, 1.05fr);
+  gap: $spacing-sm;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 18%, var(--border-color));
+  border-radius: $radius-lg;
+  background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-primary));
+
+  @include tablet {
+    grid-template-columns: 1fr;
+  }
+}
+
+.healthHeroMain,
+.refreshReport {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+
+  strong {
+    color: var(--text-primary);
+    font-size: 20px;
+    line-height: 1.2;
+  }
+
+  small {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+}
+
+.kicker,
+.refreshReport span,
+.healthHeroMetrics span {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.healthHeroMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  div {
+    display: grid;
+    min-height: 72px;
+    align-content: center;
+    gap: 6px;
+    padding: 10px;
+    border-radius: $radius-md;
+    background: var(--bg-primary);
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 24px;
+    line-height: 1;
+  }
+}
+
+.refreshReport {
+  padding: 10px 12px;
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+
+  strong {
+    font-size: 14px;
+  }
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(6, minmax(140px, 1fr));
@@ -166,22 +242,83 @@
   }
 }
 
-.recommendations {
+.panelTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin-bottom: 12px;
+
+  h2 {
+    margin: 0;
+  }
+
+  button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--primary-color);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+  }
+}
+
+.priorityList {
   display: grid;
   gap: 6px;
 }
 
-.recommendationDanger,
-.recommendationWarn,
-.recommendationInfo {
+.priorityItem,
+.emptyAdvice {
   display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 8px;
+  gap: 4px;
   padding: 8px 10px;
   border-radius: $radius-md;
+  background: var(--bg-secondary);
   font-size: 14px;
   line-height: 1.45;
+}
 
+.priorityItem {
+  appearance: none;
+  grid-template-columns: minmax(110px, 0.85fr) minmax(0, 1.15fr);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color $transition-fast,
+    background $transition-fast;
+
+  strong {
+    color: var(--text-primary);
+  }
+
+  small,
+  em {
+    color: var(--text-secondary);
+    font-style: normal;
+  }
+
+  span {
+    display: grid;
+    gap: 2px;
+  }
+
+  em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--primary-color) 36%, var(--border-color));
+    background: color-mix(in srgb, var(--primary-color) 7%, var(--bg-secondary));
+  }
+}
+
+.emptyAdvice {
   strong {
     color: var(--text-primary);
   }
@@ -189,18 +326,6 @@
   span {
     color: var(--text-secondary);
   }
-}
-
-.recommendationDanger {
-  background: rgba($error-color, 0.1);
-}
-
-.recommendationWarn {
-  background: rgba($warning-color, 0.12);
-}
-
-.recommendationInfo {
-  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
 }
 
 .bucketList {
@@ -272,6 +397,20 @@
   text-align: left;
 }
 
+.recoveryShortcut {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 24%, var(--border-color));
+  border-radius: $radius-md;
+  background: transparent;
+  color: var(--primary-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .quickActions {
   display: grid;
   grid-template-columns: 1fr;
@@ -293,6 +432,53 @@
   @include mobile {
     grid-template-columns: 1fr;
   }
+}
+
+.viewSwitch {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 86%, transparent);
+  border-radius: $radius-lg;
+  background: var(--bg-primary);
+
+  button {
+    appearance: none;
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    border: 1px solid var(--border-color);
+    border-radius: $radius-md;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+    white-space: nowrap;
+  }
+
+  span {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  strong {
+    min-width: 22px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: center;
+  }
+}
+
+.activeViewButton {
+  border-color: var(--primary-color) !important;
+  background: color-mix(in srgb, var(--primary-color) 9%, var(--bg-primary)) !important;
+  color: var(--primary-color) !important;
 }
 
 .toolbar {
@@ -376,7 +562,7 @@
 
 .tableWrap table {
   width: 100%;
-  min-width: 1440px;
+  min-width: 1180px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
@@ -394,7 +580,7 @@
 .tableWrap th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   background: var(--bg-secondary);
   color: var(--text-secondary);
   font-weight: 700;
@@ -471,10 +657,31 @@
   }
 }
 
+.healthCell,
+.metricStack {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+
+  small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  strong,
+  span {
+    color: var(--text-primary);
+  }
+}
+
 .statusPill,
-.remainingPill {
+.remainingPill,
+.healthPill {
   display: inline-flex;
   align-items: center;
+  width: fit-content;
   min-height: 24px;
   padding: 0 8px;
   border-radius: 999px;
@@ -483,25 +690,29 @@
 }
 
 .statusAvailable,
-.remainingGood {
+.remainingGood,
+.health_good {
   background: rgba($success-color, 0.12);
   color: var(--success-color);
 }
 
 .statusLimited,
-.remainingCritical {
+.remainingCritical,
+.health_danger {
   background: rgba($error-color, 0.12);
   color: var(--danger-color);
 }
 
 .statusDisabled,
-.remainingUnknown {
+.remainingUnknown,
+.health_disabled {
   background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
   color: var(--text-secondary);
 }
 
 .statusError,
-.remainingLow {
+.remainingLow,
+.health_watch {
   background: rgba($warning-color, 0.14);
   color: var(--warning-color);
 }
@@ -522,6 +733,24 @@
   display: flex;
   gap: $spacing-xs;
   align-items: center;
+
+  :global(.btn) {
+    min-width: 34px;
+  }
+}
+
+.actionsColumn {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  min-width: 166px;
+  background: var(--bg-primary);
+  box-shadow: -8px 0 12px rgba(0, 0, 0, 0.03);
+}
+
+.tableWrap th.actionsColumn {
+  z-index: 3;
+  background: var(--bg-secondary);
 }
 
 .emptyCell {
