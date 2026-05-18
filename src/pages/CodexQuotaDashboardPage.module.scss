@@ -64,7 +64,10 @@
 .healthHero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(250px, 1.1fr) minmax(260px, 0.9fr) minmax(260px, 1fr) minmax(260px, 1.05fr);
+  grid-template-columns: minmax(230px, 0.95fr) minmax(230px, 0.85fr) minmax(260px, 1fr) minmax(
+      300px,
+      1.15fr
+    );
   gap: $spacing-sm;
   padding: 14px 42px 14px 14px;
   border: 1px solid color-mix(in srgb, var(--primary-color) 18%, var(--border-color));
@@ -111,6 +114,7 @@
 }
 
 .healthHeroMain,
+.healthHeroActions,
 .refreshReport {
   display: flex;
   min-width: 0;
@@ -135,7 +139,8 @@
 .refreshReport span,
 .healthHeroMetrics span,
 .summaryCompactCard span,
-.segmentedButtonGrid span {
+.segmentedButtonGrid span,
+.quotaBucketButtons span {
   color: var(--text-tertiary);
   font-size: 12px;
   font-weight: 700;
@@ -164,7 +169,8 @@
   }
 }
 
-.healthQuotaDistribution {
+.healthQuotaDistribution,
+.healthHeroActions {
   display: grid;
   min-width: 0;
   align-content: center;
@@ -180,31 +186,13 @@
 }
 
 .refreshReport {
+  grid-column: 1 / -1;
   padding: 10px 12px;
   border-radius: $radius-md;
   background: var(--bg-primary);
 
   strong {
     font-size: 14px;
-  }
-}
-
-.bucketListCompact {
-  display: grid;
-  gap: 6px;
-}
-
-.bucketRowCompact {
-  display: grid;
-  grid-template-columns: 58px minmax(72px, 1fr) 32px;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-
-  strong {
-    color: var(--text-primary);
-    text-align: right;
   }
 }
 
@@ -219,7 +207,7 @@
 
 .controlHub {
   display: grid;
-  grid-template-columns: minmax(240px, 0.85fr) minmax(320px, 1.15fr) minmax(220px, 0.8fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 12px;
   padding: 12px;
 
@@ -266,20 +254,6 @@
   }
 }
 
-.bucketTrack {
-  height: 12px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--bg-secondary);
-}
-
-.bucketFill {
-  height: 100%;
-  min-width: 2px;
-  border-radius: inherit;
-  background: var(--success-color);
-}
-
 .summaryCompactGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -291,7 +265,8 @@
 }
 
 .summaryCompactCard,
-.segmentedButtonGrid button {
+.segmentedButtonGrid button,
+.quotaBucketButtons button {
   appearance: none;
   min-width: 0;
   border: 1px solid var(--border-color);
@@ -331,12 +306,14 @@
 }
 
 .segmentedButtonGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
   gap: 8px;
 
   button {
     display: flex;
+    flex: 1 1 128px;
     min-height: 40px;
     align-items: center;
     justify-content: space-between;
@@ -356,9 +333,34 @@
 }
 
 .summaryCompactCard:hover,
-.segmentedButtonGrid button:hover {
+.segmentedButtonGrid button:hover,
+.quotaBucketButtons button:hover {
   border-color: color-mix(in srgb, var(--primary-color) 44%, var(--border-color));
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.055);
+}
+
+.quotaBucketButtons {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+
+  button {
+    display: grid;
+    min-width: 68px;
+    min-height: 50px;
+    align-content: center;
+    gap: 5px;
+    padding: 8px;
+    text-align: center;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 16px;
+    line-height: 1;
+  }
 }
 
 .activeControlButton {
@@ -370,7 +372,7 @@
 
 .quickActions {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 
   :global(.btn) {
@@ -385,15 +387,18 @@
     overflow-wrap: anywhere;
     line-height: 1.25;
   }
-}
 
-.controlActionsSection {
-  background: color-mix(in srgb, var(--danger-color) 3%, var(--bg-secondary));
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
 }
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(150px, 190px) minmax(170px, 220px) minmax(190px, 250px);
+  grid-template-columns: minmax(260px, 1fr) minmax(150px, 190px) minmax(170px, 220px) minmax(
+      190px,
+      250px
+    );
   gap: $spacing-sm;
   align-items: end;
   padding: 12px 14px;
@@ -554,7 +559,7 @@
 .accountCell {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
 
   strong {
@@ -584,6 +589,10 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.accountMetaRow {
+  gap: 6px;
 }
 
 .planBadge {

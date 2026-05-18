@@ -18,6 +18,7 @@ type StatusFilter = 'all' | 'available' | 'limited' | 'disabled' | 'error';
 type SortMode = 'remaining-asc' | 'remaining-desc' | 'reset-asc' | 'account-asc';
 type RiskGroupKey = 'needsAction' | 'low' | 'normal' | 'disabled';
 type RecoveryBucketKey = 'hour' | 'today' | 'tomorrow' | 'soon' | 'later' | 'unknown';
+type QuotaBucketKey = 'zero' | 'low' | 'mid' | 'healthy' | 'full';
 type QuickFilter =
   | 'all'
   | 'action'
@@ -27,6 +28,7 @@ type QuickFilter =
   | 'low'
   | 'recovering'
   | 'disabled'
+  | `quota:${QuotaBucketKey}`
   | `recovery:${RecoveryBucketKey}`;
 
 const quotaCacheKey = 'cpa-manager:codex-quota:last-snapshot:v1';
@@ -53,6 +55,14 @@ const recoveryBuckets: Array<{ key: RecoveryBucketKey; label: string }> = [
   { key: 'soon', label: '3天内恢复' },
   { key: 'later', label: '超过3天' },
   { key: 'unknown', label: '未知/不适用' },
+];
+
+const quotaBucketDefinitions: Array<{ key: QuotaBucketKey; label: string }> = [
+  { key: 'zero', label: '0%' },
+  { key: 'low', label: '1-20%' },
+  { key: 'mid', label: '21-50%' },
+  { key: 'healthy', label: '51-80%' },
+  { key: 'full', label: '81-100%' },
 ];
 
 const planLabel = (plan: string) => {
@@ -123,6 +133,16 @@ const recoveryBucketKey = (account: CodexQuotaAccount): RecoveryBucketKey => {
   return 'soon';
 };
 
+const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
+  const value = account.currentRemainingPercent;
+  if (typeof value !== 'number') return null;
+  if (value === 0) return 'zero';
+  if (value <= 20) return 'low';
+  if (value <= 50) return 'mid';
+  if (value <= 80) return 'healthy';
+  return 'full';
+};
+
 const previewAccountNames = (accounts: CodexQuotaAccount[]) =>
   accounts
     .slice(0, 8)
@@ -138,6 +158,10 @@ const quickFilterLabel = (filter: QuickFilter) => {
   if (filter === 'low') return '低余量账号';
   if (filter === 'recovering') return '即将恢复';
   if (filter === 'disabled') return '已停用';
+  if (filter.startsWith('quota:')) {
+    const bucket = quotaBucketDefinitions.find((item) => filter === `quota:${item.key}`);
+    return bucket ? `余量 ${bucket.label}` : '全部账号';
+  }
   const bucket = recoveryBuckets.find((item) => filter === `recovery:${item.key}`);
   return bucket ? bucket.label : '全部账号';
 };
@@ -149,13 +173,16 @@ const matchesQuickFilter = (account: CodexQuotaAccount, filter: QuickFilter) => 
   if (filter === 'limited') return account.status === 'limited';
   if (filter === 'error') return account.status === 'error';
   if (filter === 'low') {
-    return typeof account.currentRemainingPercent === 'number' && account.currentRemainingPercent <= 20;
+    return (
+      typeof account.currentRemainingPercent === 'number' && account.currentRemainingPercent <= 20
+    );
   }
   if (filter === 'recovering') {
     const bucket = recoveryBucketKey(account);
     return bucket === 'hour' || bucket === 'today' || bucket === 'tomorrow' || bucket === 'soon';
   }
   if (filter === 'disabled') return account.disabled || account.status === 'disabled';
+  if (filter.startsWith('quota:')) return filter === `quota:${quotaBucketKey(account)}`;
   return filter === `recovery:${recoveryBucketKey(account)}`;
 };
 
@@ -264,7 +291,9 @@ export function CodexQuotaDashboardPage() {
   const [planFilter, setPlanFilter] = useState('all');
   const [sortMode, setSortMode] = useState<SortMode>('remaining-asc');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
-  const [lastRefreshAt, setLastRefreshAt] = useState(() => readCachedQuota()?.summary.generatedAt ?? '');
+  const [lastRefreshAt, setLastRefreshAt] = useState(
+    () => readCachedQuota()?.summary.generatedAt ?? ''
+  );
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
   const [refreshReport, setRefreshReport] = useState<RefreshReport | null>(null);
   const [healthHeroVisible, setHealthHeroVisible] = useState(true);
@@ -366,8 +395,18 @@ export function CodexQuotaDashboardPage() {
       description: string;
       accounts: CodexQuotaAccount[];
     }> = [
-      { key: 'needsAction', title: '需要处理', description: '受限、失败、Token异常或剩余不超过 10%', accounts: [] },
-      { key: 'low', title: '低余量观察', description: '剩余额度 11%-20%，建议减少分配', accounts: [] },
+      {
+        key: 'needsAction',
+        title: '需要处理',
+        description: '受限、失败、Token异常或剩余不超过 10%',
+        accounts: [],
+      },
+      {
+        key: 'low',
+        title: '低余量观察',
+        description: '剩余额度 11%-20%，建议减少分配',
+        accounts: [],
+      },
       { key: 'normal', title: '正常可用', description: '适合优先承接任务', accounts: [] },
       { key: 'disabled', title: '已停用', description: '不会进入调用池', accounts: [] },
     ];
@@ -397,7 +436,9 @@ export function CodexQuotaDashboardPage() {
           account.currentRemainingPercent <= 10
       ),
       disabled: accounts.filter((account) => account.disabled),
-      tokenInvalid: accounts.filter((account) => normalizeQuotaErrorReason(account).includes('Token')),
+      tokenInvalid: accounts.filter((account) =>
+        normalizeQuotaErrorReason(account).includes('Token')
+      ),
     };
   }, [data?.accounts]);
 
@@ -461,7 +502,7 @@ export function CodexQuotaDashboardPage() {
       showNotification(nextDisabled ? '没有需要停用的账号' : '没有需要启用的账号', 'info');
       return;
     }
-    setActionFile(targets.length === 1 ? targets[0]?.file ?? '__batch__' : '__batch__');
+    setActionFile(targets.length === 1 ? (targets[0]?.file ?? '__batch__') : '__batch__');
     try {
       const results = await Promise.allSettled(
         targets.map((account) => codexQuotaApi.setDisabled(account.file, nextDisabled))
@@ -480,19 +521,22 @@ export function CodexQuotaDashboardPage() {
   };
 
   const handleSetDisabled = async (account: CodexQuotaAccount, nextDisabled: boolean) => {
-    await executeSetDisabled([account], nextDisabled, () => (nextDisabled ? '账号已停用' : '账号已启用'));
+    await executeSetDisabled([account], nextDisabled, () =>
+      nextDisabled ? '账号已停用' : '账号已启用'
+    );
   };
 
   const handleBatchSetDisabled = async (nextDisabled: boolean) => {
     const targets = selectedAccounts.filter((account) => account.disabled !== nextDisabled);
     if (targets.length === 0) {
-      showNotification(nextDisabled ? '选中的账号已经是停用状态' : '选中的账号已经是启用状态', 'info');
+      showNotification(
+        nextDisabled ? '选中的账号已经是停用状态' : '选中的账号已经是启用状态',
+        'info'
+      );
       return;
     }
-    await executeSetDisabled(
-      targets,
-      nextDisabled,
-      (count) => (nextDisabled ? `已停用 ${count} 个账号` : `已启用 ${count} 个账号`)
+    await executeSetDisabled(targets, nextDisabled, (count) =>
+      nextDisabled ? `已停用 ${count} 个账号` : `已启用 ${count} 个账号`
     );
   };
 
@@ -612,7 +656,10 @@ export function CodexQuotaDashboardPage() {
       message: (
         <div className={styles.confirmPreview}>
           <p>将影响 {targets.length} 个账号。</p>
-          <p>{previewAccountNames(targets)}{targets.length > 8 ? ` 等 ${targets.length} 个` : ''}</p>
+          <p>
+            {previewAccountNames(targets)}
+            {targets.length > 8 ? ` 等 ${targets.length} 个` : ''}
+          </p>
         </div>
       ),
       confirmText: nextDisabled ? '确认停用' : '确认启用',
@@ -632,7 +679,10 @@ export function CodexQuotaDashboardPage() {
       message: (
         <div className={styles.confirmPreview}>
           <p>将归档删除 {targets.length} 个账号文件。</p>
-          <p>{previewAccountNames(targets)}{targets.length > 8 ? ` 等 ${targets.length} 个` : ''}</p>
+          <p>
+            {previewAccountNames(targets)}
+            {targets.length > 8 ? ` 等 ${targets.length} 个` : ''}
+          </p>
         </div>
       ),
       confirmText: '确认删除',
@@ -647,7 +697,9 @@ export function CodexQuotaDashboardPage() {
           const failed = results.filter((result) => result.status === 'rejected').length;
           const success = results.length - failed;
           showNotification(
-            failed > 0 ? `归档删除完成：成功 ${success} 个，失败 ${failed} 个` : `已归档删除 ${success} 个账号`,
+            failed > 0
+              ? `归档删除完成：成功 ${success} 个，失败 ${failed} 个`
+              : `已归档删除 ${success} 个账号`,
             failed > 0 ? 'warning' : 'success'
           );
           await loadQuota();
@@ -680,14 +732,17 @@ export function CodexQuotaDashboardPage() {
     { filter: 'disabled', label: '已停用', count: summary?.disabled ?? '-' },
   ];
   const quotaBuckets = summary?.buckets ?? [];
-  const quotaBucketMax = Math.max(...quotaBuckets.map((bucket) => bucket.count), 1);
-  const recoveryViews: Array<{ filter: QuickFilter; label: string; count: number }> = recoveryBuckets.map(
-    (bucket) => ({
+  const quotaBucketViews = quotaBucketDefinitions.map((definition) => ({
+    filter: `quota:${definition.key}` as QuickFilter,
+    label: definition.label,
+    count: quotaBuckets.find((bucket) => bucket.label === definition.label)?.count ?? 0,
+  }));
+  const recoveryViews: Array<{ filter: QuickFilter; label: string; count: number }> =
+    recoveryBuckets.map((bucket) => ({
       filter: `recovery:${bucket.key}`,
       label: bucket.label,
       count: recoverySummary[bucket.key],
-    })
-  );
+    }));
 
   return (
     <div className={styles.container}>
@@ -741,23 +796,81 @@ export function CodexQuotaDashboardPage() {
           </div>
           <div className={styles.healthQuotaDistribution}>
             <span className={styles.kicker}>余量分布</span>
-            <div className={styles.bucketListCompact}>
-              {quotaBuckets.length > 0 ? (
-                quotaBuckets.map((bucket) => (
-                  <div className={styles.bucketRowCompact} key={bucket.label}>
+            {quotaBuckets.length > 0 ? (
+              <div className={styles.quotaBucketButtons}>
+                {quotaBucketViews.map((bucket) => (
+                  <button
+                    key={bucket.filter}
+                    type="button"
+                    className={quickFilter === bucket.filter ? styles.activeControlButton : ''}
+                    aria-pressed={quickFilter === bucket.filter}
+                    onClick={() => activateQuickFilter(bucket.filter)}
+                  >
                     <span>{bucket.label}</span>
-                    <div className={styles.bucketTrack}>
-                      <div
-                        className={styles.bucketFill}
-                        style={{ width: `${(bucket.count / quotaBucketMax) * 100}%` }}
-                      />
-                    </div>
                     <strong>{bucket.count}</strong>
-                  </div>
-                ))
-              ) : (
-                <small>刷新后显示当前周期余量区间。</small>
-              )}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <small>刷新后显示当前周期余量区间。</small>
+            )}
+          </div>
+          <div className={styles.healthHeroActions}>
+            <span className={styles.kicker}>一键建议操作</span>
+            <div className={styles.quickActions}>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={controlsDisabled || suggestedTargets.limited.length === 0}
+                onClick={() =>
+                  confirmSuggestedSetDisabled(
+                    '停用所有受限账号',
+                    suggestedTargets.limited,
+                    true,
+                    (count) => `已停用 ${count} 个受限账号`
+                  )
+                }
+              >
+                停用受限（{suggestedTargets.limited.length}）
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={controlsDisabled || suggestedTargets.critical.length === 0}
+                onClick={() =>
+                  confirmSuggestedSetDisabled(
+                    '停用低于 10% 账号',
+                    suggestedTargets.critical,
+                    true,
+                    (count) => `已停用 ${count} 个低余量账号`
+                  )
+                }
+              >
+                停用低于10%（{suggestedTargets.critical.length}）
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={controlsDisabled || suggestedTargets.disabled.length === 0}
+                onClick={() =>
+                  confirmSuggestedSetDisabled(
+                    '启用已停用账号',
+                    suggestedTargets.disabled,
+                    false,
+                    (count) => `已启用 ${count} 个账号`
+                  )
+                }
+              >
+                启用已停用（{suggestedTargets.disabled.length}）
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={controlsDisabled || suggestedTargets.tokenInvalid.length === 0}
+                onClick={() => confirmSuggestedDelete(suggestedTargets.tokenInvalid)}
+              >
+                删除Token失效（{suggestedTargets.tokenInvalid.length}）
+              </Button>
             </div>
           </div>
           {refreshReport ? (
@@ -770,7 +883,9 @@ export function CodexQuotaDashboardPage() {
               <small>
                 请求 {refreshReport.requestedCount} 个，返回 {refreshReport.refreshedCount} 个，用时{' '}
                 {refreshReport.durationText}
-                {refreshReport.tokenInvalidCount > 0 ? `，Token失效 ${refreshReport.tokenInvalidCount} 个` : ''}
+                {refreshReport.tokenInvalidCount > 0
+                  ? `，Token失效 ${refreshReport.tokenInvalidCount} 个`
+                  : ''}
               </small>
             </div>
           ) : null}
@@ -825,64 +940,6 @@ export function CodexQuotaDashboardPage() {
             ))}
           </div>
         </div>
-        <div className={`${styles.controlSection} ${styles.controlActionsSection}`}>
-          <h2>一键建议操作</h2>
-          <div className={styles.quickActions}>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={controlsDisabled || suggestedTargets.limited.length === 0}
-              onClick={() =>
-                confirmSuggestedSetDisabled(
-                  '停用所有受限账号',
-                  suggestedTargets.limited,
-                  true,
-                  (count) => `已停用 ${count} 个受限账号`
-                )
-              }
-            >
-              停用受限账号（{suggestedTargets.limited.length}）
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={controlsDisabled || suggestedTargets.critical.length === 0}
-              onClick={() =>
-                confirmSuggestedSetDisabled(
-                  '停用低于 10% 账号',
-                  suggestedTargets.critical,
-                  true,
-                  (count) => `已停用 ${count} 个低余量账号`
-                )
-              }
-            >
-              停用低于10%（{suggestedTargets.critical.length}）
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={controlsDisabled || suggestedTargets.disabled.length === 0}
-              onClick={() =>
-                confirmSuggestedSetDisabled(
-                  '启用已停用账号',
-                  suggestedTargets.disabled,
-                  false,
-                  (count) => `已启用 ${count} 个账号`
-                )
-              }
-            >
-              启用已停用（{suggestedTargets.disabled.length}）
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              disabled={controlsDisabled || suggestedTargets.tokenInvalid.length === 0}
-              onClick={() => confirmSuggestedDelete(suggestedTargets.tokenInvalid)}
-            >
-              删除Token失效（{suggestedTargets.tokenInvalid.length}）
-            </Button>
-          </div>
-        </div>
       </section>
 
       <section className={styles.toolbar}>
@@ -890,7 +947,7 @@ export function CodexQuotaDashboardPage() {
           label="搜索账号"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="输入邮箱、文件名、状态或错误原因"
+          placeholder="输入账号、邮箱、状态或错误原因"
           rightElement={<IconSearch size={16} />}
         />
         <div className={styles.toolbarControl}>
@@ -992,15 +1049,21 @@ export function CodexQuotaDashboardPage() {
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={6} className={styles.emptyCell}>正在加载账号余量...</td>
+                  <td colSpan={6} className={styles.emptyCell}>
+                    正在加载账号余量...
+                  </td>
                 </tr>
               ) : !data ? (
                 <tr>
-                  <td colSpan={6} className={styles.emptyCell}>点击“刷新余量”开始查询账号状态</td>
+                  <td colSpan={6} className={styles.emptyCell}>
+                    点击“刷新余量”开始查询账号状态
+                  </td>
                 </tr>
               ) : visibleAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className={styles.emptyCell}>没有匹配的账号</td>
+                  <td colSpan={6} className={styles.emptyCell}>
+                    没有匹配的账号
+                  </td>
                 </tr>
               ) : (
                 groupedVisibleAccounts.flatMap((group) => [
@@ -1027,28 +1090,35 @@ export function CodexQuotaDashboardPage() {
                         <td>
                           <div className={styles.accountCell}>
                             <div className={styles.accountTitleRow}>
-                              <span className={styles.planBadge}>{planBadgeLabel(account.plan)}</span>
+                              <span className={styles.planBadge}>
+                                {planBadgeLabel(account.plan)}
+                              </span>
                               <strong>{account.account}</strong>
-                              <span className={`${styles.statusPill} ${statusClass(account.status)}`}>
+                              <span
+                                className={`${styles.statusPill} ${statusClass(account.status)}`}
+                              >
                                 {account.statusText}
                               </span>
                             </div>
                             <div className={styles.accountMetaRow}>
-                              <span className={`${styles.healthPill} ${styles[`health_${health.tone}`]}`}>
+                              <span
+                                className={`${styles.healthPill} ${styles[`health_${health.tone}`]}`}
+                              >
                                 {health.label}
                               </span>
-                              <small>{account.file}</small>
+                              {health.tone !== 'good' ? <small>{health.reason}</small> : null}
+                              {normalizeQuotaErrorReason(account) !== '-' ? (
+                                <em title={account.error}>{normalizeQuotaErrorReason(account)}</em>
+                              ) : null}
                             </div>
-                            {health.tone !== 'good' ? <small>{health.reason}</small> : null}
-                            {normalizeQuotaErrorReason(account) !== '-' ? (
-                              <em title={account.error}>{normalizeQuotaErrorReason(account)}</em>
-                            ) : null}
                           </div>
                         </td>
                         <td>
                           <div className={styles.metricStack}>
                             <div className={styles.metricPrimaryRow}>
-                              <span className={`${styles.remainingPill} ${remainingClass(account)}`}>
+                              <span
+                                className={`${styles.remainingPill} ${remainingClass(account)}`}
+                              >
                                 剩余 {percent(account.currentRemainingPercent)}
                               </span>
                               <small>已用 {percent(account.currentUsedPercent)}</small>
@@ -1084,7 +1154,9 @@ export function CodexQuotaDashboardPage() {
                               variant="secondary"
                               disabled={controlsDisabled}
                               loading={actionFile === `refresh:${account.file}`}
-                              onClick={() => void handleRefreshTargets([account], `refresh:${account.file}`)}
+                              onClick={() =>
+                                void handleRefreshTargets([account], `refresh:${account.file}`)
+                              }
                               title="刷新这个账号"
                             >
                               <IconRefreshCw size={14} />
