@@ -49,15 +49,42 @@ export interface AccountPoolBalance {
   estimatedValueUsd: number;
 }
 
-const accountCycleTokens = 4_000_000;
-const accountCycleCostUsd = 4;
-const accountCycleCalls = 34;
-const averageTokensPerCall = accountCycleTokens / accountCycleCalls;
+export interface AccountPoolBalanceSettings {
+  accountCycleTokens: number;
+  accountCycleCostUsd: number;
+  accountCycleCalls: number;
+}
+
+export const defaultAccountPoolBalanceSettings: AccountPoolBalanceSettings = {
+  accountCycleTokens: 4_000_000,
+  accountCycleCostUsd: 4,
+  accountCycleCalls: 34,
+};
+
+const sanitizeAccountPoolBalanceSettings = (
+  settings: AccountPoolBalanceSettings
+): AccountPoolBalanceSettings => ({
+  accountCycleTokens:
+    Number.isFinite(settings.accountCycleTokens) && settings.accountCycleTokens > 0
+      ? settings.accountCycleTokens
+      : defaultAccountPoolBalanceSettings.accountCycleTokens,
+  accountCycleCostUsd:
+    Number.isFinite(settings.accountCycleCostUsd) && settings.accountCycleCostUsd > 0
+      ? settings.accountCycleCostUsd
+      : defaultAccountPoolBalanceSettings.accountCycleCostUsd,
+  accountCycleCalls:
+    Number.isFinite(settings.accountCycleCalls) && settings.accountCycleCalls > 0
+      ? settings.accountCycleCalls
+      : defaultAccountPoolBalanceSettings.accountCycleCalls,
+});
 
 export const buildAccountPoolBalance = (
   accounts: CodexQuotaAccount[],
-  scope: AccountPoolBalanceScope
+  scope: AccountPoolBalanceScope,
+  rawSettings: AccountPoolBalanceSettings = defaultAccountPoolBalanceSettings
 ): AccountPoolBalance => {
+  const settings = sanitizeAccountPoolBalanceSettings(rawSettings);
+  const averageTokensPerCall = settings.accountCycleTokens / settings.accountCycleCalls;
   const scopedAccounts = accounts.filter((account) => {
     if (scope === 'inventory') return true;
     return !account.disabled && account.status === 'available' && !account.limitReached;
@@ -69,7 +96,7 @@ export const buildAccountPoolBalance = (
   );
   const estimatedRemainingTokens = measurableAccounts.reduce((total, account) => {
     const remainingPercent = Math.max(0, Math.min(100, account.currentRemainingPercent ?? 0));
-    return total + accountCycleTokens * (remainingPercent / 100);
+    return total + settings.accountCycleTokens * (remainingPercent / 100);
   }, 0);
 
   return {
@@ -77,7 +104,12 @@ export const buildAccountPoolBalance = (
     measurableAccounts: measurableAccounts.length,
     estimatedRemainingTokens: Math.round(estimatedRemainingTokens),
     estimatedCalls: Math.round(estimatedRemainingTokens / averageTokensPerCall),
-    estimatedValueUsd: Math.round((estimatedRemainingTokens / accountCycleTokens) * accountCycleCostUsd * 10) / 10,
+    estimatedValueUsd:
+      Math.round(
+        (estimatedRemainingTokens / settings.accountCycleTokens) *
+          settings.accountCycleCostUsd *
+          10
+      ) / 10,
   };
 };
 

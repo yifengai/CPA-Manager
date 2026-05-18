@@ -8,6 +8,7 @@ CPA 自 v6.10.0 起不再内置用量统计。当前方案通过常驻 Usage Ser
 
 - **CPA 主项目**: https://github.com/router-for-me/CLIProxyAPI
 - **推荐 CPA 版本**: >= v6.10.8
+- **Codex 余量 Docker 部署**: [docs/codex-quota-docker.md](docs/codex-quota-docker.md)
 
 ## 面板预览
 

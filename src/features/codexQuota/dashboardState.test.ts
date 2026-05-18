@@ -81,6 +81,29 @@ describe('codex quota dashboard state', () => {
     });
   });
 
+  it('uses runtime estimate settings for public Docker deployments', () => {
+    const accounts = [
+      createAccount({
+        account: 'usable@example.com',
+        currentRemainingPercent: 50,
+      }),
+    ];
+
+    expect(
+      buildAccountPoolBalance(accounts, 'available', {
+        accountCycleTokens: 2_000_000,
+        accountCycleCostUsd: 2,
+        accountCycleCalls: 20,
+      })
+    ).toMatchObject({
+      accountCount: 1,
+      estimatedRemainingTokens: 1_000_000,
+      estimatedCalls: 10,
+      estimatedValueUsd: 1,
+      measurableAccounts: 1,
+    });
+  });
+
   it('classifies token invalidation as a login action instead of a generic error', () => {
     const account = createAccount({
       status: 'error',

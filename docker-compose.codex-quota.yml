@@ -1,0 +1,34 @@
+services:
+  cpa-manager:
+    image: ${CPA_MANAGER_IMAGE:-ghcr.io/yifengai/cpa-manager:codex-quota}
+    restart: unless-stopped
+    ports:
+      - "${CPA_MANAGER_PORT:-18317}:18317"
+    environment:
+      HTTP_ADDR: "0.0.0.0:18317"
+      USAGE_DB_PATH: "/data/usage.sqlite"
+      USAGE_COLLECTOR_MODE: "auto"
+      USAGE_RESP_QUEUE: "usage"
+      USAGE_RESP_POP_SIDE: "right"
+      USAGE_BATCH_SIZE: "100"
+      USAGE_POLL_INTERVAL_MS: "500"
+      USAGE_QUERY_LIMIT: "50000"
+      USAGE_CORS_ORIGINS: "*"
+      CPA_UPSTREAM_URL: "${CPA_UPSTREAM_URL:-}"
+      CPA_MANAGEMENT_KEY: "${CPA_MANAGEMENT_KEY:-}"
+      CPA_CODEX_AUTH_DIR: "/auths"
+      CPA_DELETED_AUTH_DIR: "/data/deleted-auths"
+      CODEX_QUOTA_ESTIMATE_TOKENS: "${CODEX_QUOTA_ESTIMATE_TOKENS:-4000000}"
+      CODEX_QUOTA_ESTIMATE_COST_USD: "${CODEX_QUOTA_ESTIMATE_COST_USD:-4}"
+      CODEX_QUOTA_ESTIMATE_CALLS: "${CODEX_QUOTA_ESTIMATE_CALLS:-34}"
+    volumes:
+      - cpa-manager-data:/data
+      - ${CPA_CODEX_AUTH_PATH:-./auths}:/auths
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18317/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  cpa-manager-data:

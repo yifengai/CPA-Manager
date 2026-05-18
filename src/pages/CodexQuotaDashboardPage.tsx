@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -6,10 +6,12 @@ import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
   buildAccountPoolBalance,
   buildTodayRestoredHistory,
+  defaultAccountPoolBalanceSettings,
   getRecoveryDayBucketKey,
   getAccountHealth,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
+  type AccountPoolBalanceSettings,
   type AccountPoolBalanceScope,
   type RecoveryDayBucketKey,
   type TodayRestoredAccount,
@@ -346,6 +348,9 @@ export function CodexQuotaDashboardPage() {
   const [sortMode, setSortMode] = useState<SortMode>('remaining-asc');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [poolScope, setPoolScope] = useState<AccountPoolBalanceScope>('available');
+  const [poolSettings, setPoolSettings] = useState<AccountPoolBalanceSettings>(
+    defaultAccountPoolBalanceSettings
+  );
   const [lastRefreshAt, setLastRefreshAt] = useState(
     () => readCachedQuota()?.summary.generatedAt ?? ''
   );
@@ -360,6 +365,27 @@ export function CodexQuotaDashboardPage() {
     setPlanFilter('all');
     setSelectedFiles(new Set());
   }, []);
+
+  useEffect(() => {
+    if (disabled) return;
+    let cancelled = false;
+    codexQuotaApi
+      .settings()
+      .then((settings) => {
+        if (cancelled) return;
+        setPoolSettings({
+          accountCycleTokens: settings.accountCycleTokens,
+          accountCycleCostUsd: settings.accountCycleCostUsd,
+          accountCycleCalls: settings.accountCycleCalls,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPoolSettings(defaultAccountPoolBalanceSettings);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [disabled]);
 
   const loadQuota = useCallback(async () => {
     setLoading(true);
@@ -725,8 +751,8 @@ export function CodexQuotaDashboardPage() {
   const summary = data?.summary;
   const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
   const accountPoolBalance = useMemo(
-    () => buildAccountPoolBalance(data?.accounts ?? [], poolScope),
-    [data?.accounts, poolScope]
+    () => buildAccountPoolBalance(data?.accounts ?? [], poolScope, poolSettings),
+    [data?.accounts, poolScope, poolSettings]
   );
   const quotaBucketCounts = useMemo(() => {
     const counts: Record<QuotaBucketKey, number> = {

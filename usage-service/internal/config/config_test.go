@@ -130,6 +130,37 @@ func TestLoadEnvOverridesConfig(t *testing.T) {
 	}
 }
 
+func TestLoadReadsCodexQuotaEstimateConfig(t *testing.T) {
+	clearConfigEnv(t)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(configPath, []byte(`{
+  "codexQuotaEstimateTokens": 3000000,
+  "codexQuotaEstimateCostUsd": 3.5,
+  "codexQuotaEstimateCalls": 30
+}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv(configEnvKey, configPath)
+	t.Setenv("CODEX_QUOTA_ESTIMATE_TOKENS", "4000000")
+	t.Setenv("CODEX_QUOTA_ESTIMATE_COST_USD", "4")
+	t.Setenv("CODEX_QUOTA_ESTIMATE_CALLS", "34")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.CodexQuotaEstimateTokens != 4000000 {
+		t.Fatalf("CodexQuotaEstimateTokens = %d", cfg.CodexQuotaEstimateTokens)
+	}
+	if cfg.CodexQuotaEstimateCostUSD != 4 {
+		t.Fatalf("CodexQuotaEstimateCostUSD = %f", cfg.CodexQuotaEstimateCostUSD)
+	}
+	if cfg.CodexQuotaEstimateCalls != 34 {
+		t.Fatalf("CodexQuotaEstimateCalls = %d", cfg.CodexQuotaEstimateCalls)
+	}
+}
+
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
@@ -149,6 +180,9 @@ func clearConfigEnv(t *testing.T) {
 		"USAGE_CORS_ORIGINS",
 		"USAGE_RESP_TLS_SKIP_VERIFY",
 		"PANEL_PATH",
+		"CODEX_QUOTA_ESTIMATE_TOKENS",
+		"CODEX_QUOTA_ESTIMATE_COST_USD",
+		"CODEX_QUOTA_ESTIMATE_CALLS",
 	} {
 		t.Setenv(key, "")
 	}

@@ -124,6 +124,33 @@ func TestModelListProxyPreservesAuthorization(t *testing.T) {
 	}
 }
 
+func TestCodexQuotaSettingsExposePublicEstimateConfig(t *testing.T) {
+	handler := newTestHandlerWithConfig(t, config.Config{
+		CodexQuotaEstimateTokens:  4000000,
+		CodexQuotaEstimateCostUSD: 4,
+		CodexQuotaEstimateCalls:   34,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/codex-quota/settings", nil)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var payload struct {
+		AccountCycleTokens  int     `json:"accountCycleTokens"`
+		AccountCycleCostUSD float64 `json:"accountCycleCostUsd"`
+		AccountCycleCalls   int     `json:"accountCycleCalls"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.AccountCycleTokens != 4000000 || payload.AccountCycleCostUSD != 4 || payload.AccountCycleCalls != 34 {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
 func TestUsageImportAcceptsLegacyExportAndSkipsDuplicates(t *testing.T) {
 	handler := newTestHandler(t, "http://example.test", true)
 	payload := `{

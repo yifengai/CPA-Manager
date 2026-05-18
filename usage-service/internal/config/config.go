@@ -17,41 +17,47 @@ const defaultConfigName = "config.json"
 const defaultSecretFile = "/run/secrets/cpa_management_key"
 
 type Config struct {
-	HTTPAddr       string
-	DBPath         string
-	DataDir        string
-	CPAUpstreamURL string
-	ManagementKey  string
-	CollectorMode  string
-	Queue          string
-	PopSide        string
-	BatchSize      int
-	PollInterval   time.Duration
-	QueryLimit     int
-	PanelPath      string
-	CodexAuthDir   string
-	DeletedAuthDir string
-	CORSOrigins    []string
-	TLSSkipVerify  bool
+	HTTPAddr                  string
+	DBPath                    string
+	DataDir                   string
+	CPAUpstreamURL            string
+	ManagementKey             string
+	CollectorMode             string
+	Queue                     string
+	PopSide                   string
+	BatchSize                 int
+	PollInterval              time.Duration
+	QueryLimit                int
+	PanelPath                 string
+	CodexAuthDir              string
+	DeletedAuthDir            string
+	CORSOrigins               []string
+	TLSSkipVerify             bool
+	CodexQuotaEstimateTokens  int
+	CodexQuotaEstimateCostUSD float64
+	CodexQuotaEstimateCalls   int
 }
 
 type fileConfig struct {
-	HTTPAddr          string   `json:"httpAddr,omitempty"`
-	DataDir           string   `json:"dataDir,omitempty"`
-	DBPath            string   `json:"dbPath,omitempty"`
-	CPAUpstreamURL    string   `json:"cpaUpstreamUrl,omitempty"`
-	ManagementKeyFile string   `json:"managementKeyFile,omitempty"`
-	CollectorMode     string   `json:"collectorMode,omitempty"`
-	Queue             string   `json:"queue,omitempty"`
-	PopSide           string   `json:"popSide,omitempty"`
-	BatchSize         int      `json:"batchSize,omitempty"`
-	PollIntervalMS    int      `json:"pollIntervalMs,omitempty"`
-	QueryLimit        int      `json:"queryLimit,omitempty"`
-	PanelPath         string   `json:"panelPath,omitempty"`
-	CodexAuthDir      string   `json:"codexAuthDir,omitempty"`
-	DeletedAuthDir    string   `json:"deletedAuthDir,omitempty"`
-	CORSOrigins       []string `json:"corsOrigins,omitempty"`
-	TLSSkipVerify     bool     `json:"tlsSkipVerify,omitempty"`
+	HTTPAddr                  string   `json:"httpAddr,omitempty"`
+	DataDir                   string   `json:"dataDir,omitempty"`
+	DBPath                    string   `json:"dbPath,omitempty"`
+	CPAUpstreamURL            string   `json:"cpaUpstreamUrl,omitempty"`
+	ManagementKeyFile         string   `json:"managementKeyFile,omitempty"`
+	CollectorMode             string   `json:"collectorMode,omitempty"`
+	Queue                     string   `json:"queue,omitempty"`
+	PopSide                   string   `json:"popSide,omitempty"`
+	BatchSize                 int      `json:"batchSize,omitempty"`
+	PollIntervalMS            int      `json:"pollIntervalMs,omitempty"`
+	QueryLimit                int      `json:"queryLimit,omitempty"`
+	PanelPath                 string   `json:"panelPath,omitempty"`
+	CodexAuthDir              string   `json:"codexAuthDir,omitempty"`
+	DeletedAuthDir            string   `json:"deletedAuthDir,omitempty"`
+	CORSOrigins               []string `json:"corsOrigins,omitempty"`
+	TLSSkipVerify             bool     `json:"tlsSkipVerify,omitempty"`
+	CodexQuotaEstimateTokens  int      `json:"codexQuotaEstimateTokens,omitempty"`
+	CodexQuotaEstimateCostUSD float64  `json:"codexQuotaEstimateCostUsd,omitempty"`
+	CodexQuotaEstimateCalls   int      `json:"codexQuotaEstimateCalls,omitempty"`
 }
 
 func Load() (Config, error) {
@@ -79,22 +85,25 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		HTTPAddr:       env("HTTP_ADDR", stringFallback(cfgFile.HTTPAddr, "0.0.0.0:18317")),
-		DBPath:         env("USAGE_DB_PATH", dbPathFallback),
-		DataDir:        dataDir,
-		CPAUpstreamURL: env("CPA_UPSTREAM_URL", cfgFile.CPAUpstreamURL),
-		ManagementKey:  readSecret("CPA_MANAGEMENT_KEY", "CPA_MANAGEMENT_KEY_FILE", managementKeyFile),
-		CollectorMode:  normalizeCollectorMode(env("USAGE_COLLECTOR_MODE", stringFallback(cfgFile.CollectorMode, "auto"))),
-		Queue:          env("USAGE_RESP_QUEUE", stringFallback(cfgFile.Queue, "usage")),
-		PopSide:        env("USAGE_RESP_POP_SIDE", stringFallback(cfgFile.PopSide, "right")),
-		BatchSize:      envInt("USAGE_BATCH_SIZE", intFallback(cfgFile.BatchSize, 100)),
-		PollInterval:   time.Duration(envInt("USAGE_POLL_INTERVAL_MS", intFallback(cfgFile.PollIntervalMS, 500))) * time.Millisecond,
-		QueryLimit:     envInt("USAGE_QUERY_LIMIT", intFallback(cfgFile.QueryLimit, 50000)),
-		PanelPath:      env("PANEL_PATH", resolveConfigPath(cfgFile.PanelPath, cfgDir)),
-		CodexAuthDir:   env("CPA_CODEX_AUTH_DIR", resolveConfigPath(cfgFile.CodexAuthDir, cfgDir)),
-		DeletedAuthDir: env("CPA_DELETED_AUTH_DIR", resolveConfigPath(stringFallback(cfgFile.DeletedAuthDir, filepath.Join(dataDir, "deleted-auths")), cfgDir)),
-		CORSOrigins:    splitCSV(env("USAGE_CORS_ORIGINS", strings.Join(sliceFallback(cfgFile.CORSOrigins, []string{"*"}), ","))),
-		TLSSkipVerify:  envBool("USAGE_RESP_TLS_SKIP_VERIFY", cfgFile.TLSSkipVerify),
+		HTTPAddr:                  env("HTTP_ADDR", stringFallback(cfgFile.HTTPAddr, "0.0.0.0:18317")),
+		DBPath:                    env("USAGE_DB_PATH", dbPathFallback),
+		DataDir:                   dataDir,
+		CPAUpstreamURL:            env("CPA_UPSTREAM_URL", cfgFile.CPAUpstreamURL),
+		ManagementKey:             readSecret("CPA_MANAGEMENT_KEY", "CPA_MANAGEMENT_KEY_FILE", managementKeyFile),
+		CollectorMode:             normalizeCollectorMode(env("USAGE_COLLECTOR_MODE", stringFallback(cfgFile.CollectorMode, "auto"))),
+		Queue:                     env("USAGE_RESP_QUEUE", stringFallback(cfgFile.Queue, "usage")),
+		PopSide:                   env("USAGE_RESP_POP_SIDE", stringFallback(cfgFile.PopSide, "right")),
+		BatchSize:                 envInt("USAGE_BATCH_SIZE", intFallback(cfgFile.BatchSize, 100)),
+		PollInterval:              time.Duration(envInt("USAGE_POLL_INTERVAL_MS", intFallback(cfgFile.PollIntervalMS, 500))) * time.Millisecond,
+		QueryLimit:                envInt("USAGE_QUERY_LIMIT", intFallback(cfgFile.QueryLimit, 50000)),
+		PanelPath:                 env("PANEL_PATH", resolveConfigPath(cfgFile.PanelPath, cfgDir)),
+		CodexAuthDir:              env("CPA_CODEX_AUTH_DIR", resolveConfigPath(cfgFile.CodexAuthDir, cfgDir)),
+		DeletedAuthDir:            env("CPA_DELETED_AUTH_DIR", resolveConfigPath(stringFallback(cfgFile.DeletedAuthDir, filepath.Join(dataDir, "deleted-auths")), cfgDir)),
+		CORSOrigins:               splitCSV(env("USAGE_CORS_ORIGINS", strings.Join(sliceFallback(cfgFile.CORSOrigins, []string{"*"}), ","))),
+		TLSSkipVerify:             envBool("USAGE_RESP_TLS_SKIP_VERIFY", cfgFile.TLSSkipVerify),
+		CodexQuotaEstimateTokens:  envInt("CODEX_QUOTA_ESTIMATE_TOKENS", intFallback(cfgFile.CodexQuotaEstimateTokens, 4000000)),
+		CodexQuotaEstimateCostUSD: envFloat("CODEX_QUOTA_ESTIMATE_COST_USD", floatFallback(cfgFile.CodexQuotaEstimateCostUSD, 4)),
+		CodexQuotaEstimateCalls:   envInt("CODEX_QUOTA_ESTIMATE_CALLS", intFallback(cfgFile.CodexQuotaEstimateCalls, 34)),
 	}, nil
 }
 
@@ -208,6 +217,18 @@ func envBool(key string, fallback bool) bool {
 	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
+func envFloat(key string, fallback float64) float64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
 func stringFallback(value string, fallback string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -217,6 +238,13 @@ func stringFallback(value string, fallback string) string {
 }
 
 func intFallback(value int, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func floatFallback(value float64, fallback float64) float64 {
 	if value <= 0 {
 		return fallback
 	}

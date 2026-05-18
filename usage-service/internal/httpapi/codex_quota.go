@@ -115,6 +115,8 @@ func (s *Server) handleCodexQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	path := strings.TrimRight(r.URL.Path, "/")
 	switch {
+	case path == "/v0/management/codex-quota/settings" && r.Method == http.MethodGet:
+		s.handleCodexQuotaSettings(w, r)
 	case path == "/v0/management/codex-quota" && r.Method == http.MethodGet:
 		s.handleCodexQuotaList(w, r)
 	case path == "/v0/management/codex-quota/refresh" && r.Method == http.MethodPost:
@@ -126,6 +128,14 @@ func (s *Server) handleCodexQuota(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w)
 	}
+}
+
+func (s *Server) handleCodexQuotaSettings(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"accountCycleTokens":  s.cfg.CodexQuotaEstimateTokens,
+		"accountCycleCostUsd": s.cfg.CodexQuotaEstimateCostUSD,
+		"accountCycleCalls":   s.cfg.CodexQuotaEstimateCalls,
+	})
 }
 
 func (s *Server) handleCodexQuotaList(w http.ResponseWriter, r *http.Request) {

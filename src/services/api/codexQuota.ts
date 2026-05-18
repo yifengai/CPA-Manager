@@ -51,7 +51,15 @@ export interface ClearFailedUsageResponse {
   deleted: number;
 }
 
+export interface CodexQuotaSettings {
+  accountCycleTokens: number;
+  accountCycleCostUsd: number;
+  accountCycleCalls: number;
+}
+
 export const codexQuotaApi = {
+  settings: () => apiClient.get<CodexQuotaSettings>('/codex-quota/settings'),
+
   list: () => apiClient.get<CodexQuotaResponse>('/codex-quota'),
 
   refreshSelected: (files: string[]) =>
