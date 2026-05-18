@@ -337,6 +337,7 @@ export function CodexQuotaDashboardPage() {
     readCachedTodayRestoredHistory()
   );
   const [loading, setLoading] = useState(false);
+  const [clearingFailedUsage, setClearingFailedUsage] = useState(false);
   const [actionFile, setActionFile] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -698,6 +699,29 @@ export function CodexQuotaDashboardPage() {
     });
   };
 
+  const confirmClearFailedUsage = () => {
+    showConfirmation({
+      title: '清除失败调用记录',
+      message:
+        '将删除 Usage Service 中所有失败调用记录，并从用量与消耗统计中移除这些失败记录。成功调用记录不会受影响。',
+      confirmText: '清除',
+      cancelText: '取消',
+      variant: 'danger',
+      onConfirm: async () => {
+        setClearingFailedUsage(true);
+        try {
+          const result = await codexQuotaApi.clearFailedUsage();
+          showNotification(`已清除 ${result.deleted} 条失败调用记录`, 'success');
+        } catch (err) {
+          const message = err instanceof Error ? err.message : '清除失败';
+          showNotification(`清除失败调用记录失败：${message}`, 'error');
+        } finally {
+          setClearingFailedUsage(false);
+        }
+      },
+    });
+  };
+
   const summary = data?.summary;
   const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
   const accountPoolBalance = useMemo(
@@ -758,8 +782,16 @@ export function CodexQuotaDashboardPage() {
         <div className={styles.refreshGroup}>
           <span className={styles.refreshTime}>当前刷新时间：{lastRefreshAt || '未刷新'}</span>
           <Button onClick={() => void loadQuota()} loading={loading} disabled={disabled} size="sm">
-            <IconRefreshCw size={16} />
             <span>刷新余量</span>
+          </Button>
+          <Button
+            onClick={confirmClearFailedUsage}
+            loading={clearingFailedUsage}
+            disabled={disabled || clearingFailedUsage}
+            size="sm"
+            variant="danger"
+          >
+            清除失败记录
           </Button>
         </div>
       </div>
@@ -871,34 +903,37 @@ export function CodexQuotaDashboardPage() {
 
       <section className={styles.toolbar}>
         <Input
-          label="搜索账号"
+          aria-label="搜索账号"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="输入账号、邮箱、状态或错误原因"
           rightElement={<IconSearch size={16} />}
         />
         <div className={styles.toolbarControl}>
-          <label htmlFor="codex-quota-status">状态</label>
           <Select
             id="codex-quota-status"
+            ariaLabel="状态"
+            triggerClassName={styles.toolbarSelectTrigger}
             value={statusFilter}
             options={statusOptions}
             onChange={(value) => setStatusFilter(value as StatusFilter)}
           />
         </div>
         <div className={styles.toolbarControl}>
-          <label htmlFor="codex-quota-plan">账号类型</label>
           <Select
             id="codex-quota-plan"
+            ariaLabel="账号类型"
+            triggerClassName={styles.toolbarSelectTrigger}
             value={planFilter}
             options={planOptions}
             onChange={setPlanFilter}
           />
         </div>
         <div className={styles.toolbarControl}>
-          <label htmlFor="codex-quota-sort">排序</label>
           <Select
             id="codex-quota-sort"
+            ariaLabel="排序"
+            triggerClassName={styles.toolbarSelectTrigger}
             value={sortMode}
             options={sortOptions}
             onChange={(value) => setSortMode(value as SortMode)}

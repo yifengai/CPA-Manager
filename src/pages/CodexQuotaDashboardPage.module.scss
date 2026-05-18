@@ -40,6 +40,10 @@
   gap: $spacing-sm;
   flex-wrap: wrap;
 
+  :global(.btn) {
+    flex: 0 0 auto;
+  }
+
   @include mobile {
     width: 100%;
     justify-content: flex-start;
@@ -47,9 +51,15 @@
 }
 
 .refreshTime {
+  flex: 1 0 100%;
   color: var(--text-secondary);
   font-size: 13px;
+  text-align: right;
   white-space: nowrap;
+
+  @include mobile {
+    text-align: left;
+  }
 }
 
 .errorBox {
@@ -209,8 +219,8 @@
 
 .accountPoolPanel {
   display: grid;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 10px 12px;
 }
 
 .accountPoolHeader {
@@ -222,18 +232,18 @@
   h2 {
     margin: 0;
     color: var(--text-primary);
-    font-size: 17px;
+    font-size: 15px;
     line-height: 1.25;
   }
 
   span {
     display: inline-flex;
-    margin-top: 4px;
+    margin-top: 2px;
     color: var(--text-secondary);
     font-size: 12px;
   }
 
-  @include mobile {
+  @media (max-width: 460px) {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -248,8 +258,8 @@
 
   button {
     appearance: none;
-    min-height: 32px;
-    padding: 0 13px;
+    min-height: 28px;
+    padding: 0 11px;
     border: 0;
     background: transparent;
     color: var(--text-secondary);
@@ -273,30 +283,28 @@
 .accountPoolMetrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+}
 
-  @include tablet {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  @include mobile {
+@media (max-width: 620px) {
+  .accountPoolMetrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 460px) {
+@media (max-width: 420px) {
   .accountPoolMetrics {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
 
 .accountPoolMetricCard {
   display: grid;
   min-width: 0;
-  min-height: 88px;
+  min-height: 66px;
   align-content: center;
-  gap: 7px;
-  padding: 12px 14px;
+  gap: 5px;
+  padding: 8px 10px;
   border: 1px solid var(--border-color);
   border-radius: $radius-md;
   background: var(--bg-primary);
@@ -309,7 +317,7 @@
 
   strong {
     color: var(--text-primary);
-    font-size: 28px;
+    font-size: 23px;
     line-height: 1;
   }
 
@@ -352,26 +360,26 @@
 
 .filterPanel {
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 7px 10px;
 }
 
 .filterRow {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: 78px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 
   h2 {
     margin: 0;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     white-space: nowrap;
   }
 
-  @include mobile {
+  @media (max-width: 420px) {
     grid-template-columns: 1fr;
     align-items: start;
   }
@@ -458,17 +466,22 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
-  padding: 1px 0 3px;
+  padding: 0 0 2px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   button {
     display: inline-flex;
     flex: 0 0 auto;
-    min-height: 32px;
+    min-height: 27px;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
+    gap: 5px;
+    padding: 3px 9px;
     text-align: center;
     white-space: nowrap;
   }
@@ -481,7 +494,7 @@
   }
 
   strong {
-    min-width: 22px;
+    min-width: 20px;
     padding: 1px 6px;
     border-radius: 999px;
     background: var(--bg-secondary);
@@ -606,23 +619,30 @@
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(150px, 190px) minmax(170px, 220px) minmax(
-      190px,
-      250px
+  grid-template-columns: minmax(220px, 1fr) minmax(112px, 140px) minmax(126px, 160px) minmax(
+      150px,
+      190px
     );
-  gap: $spacing-sm;
-  align-items: end;
-  padding: 12px 14px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
 
   :global(.form-group) {
     margin-bottom: 0;
   }
 
-  @include tablet {
+  :global(.input) {
+    min-height: 36px;
+    padding: 8px 32px 8px 10px;
+    background-color: var(--bg-primary);
+    font-size: 13px;
+  }
+
+  @media (max-width: 620px) {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  @include mobile {
+  @media (max-width: 420px) {
     grid-template-columns: 1fr;
   }
 }
@@ -630,13 +650,12 @@
 .toolbarControl {
   display: flex;
   min-width: 0;
-  flex-direction: column;
-  gap: $spacing-xs;
+}
 
-  label {
-    color: var(--text-primary);
-    font-weight: 600;
-  }
+.toolbarSelectTrigger {
+  height: 36px;
+  padding: 0 10px;
+  background-color: var(--bg-primary);
 }
 
 .tablePanel {
