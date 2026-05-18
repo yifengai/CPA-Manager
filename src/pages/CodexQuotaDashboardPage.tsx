@@ -19,10 +19,11 @@ import styles from './CodexQuotaDashboardPage.module.scss';
 type StatusFilter = 'all' | 'available' | 'limited' | 'disabled' | 'error';
 type SortMode = 'remaining-asc' | 'remaining-desc' | 'reset-asc' | 'account-asc';
 type RiskGroupKey = 'needsAction' | 'low' | 'normal' | 'disabled';
-type QuotaBucketKey = 'zero' | 'low' | 'mid' | 'healthy' | 'full';
+type QuotaBucketKey = 'zero' | 'low' | 'mid' | 'healthy' | 'high' | 'full';
 type QuickFilter =
   | 'all'
   | 'action'
+  | 'enabled'
   | 'available'
   | 'limited'
   | 'error'
@@ -60,7 +61,6 @@ const recoveryBuckets: Array<{ key: RecoveryDayBucketKey; label: string }> = [
   { key: 'day5', label: '5天后' },
   { key: 'day6', label: '6天后' },
   { key: 'day7', label: '7天后' },
-  { key: 'later', label: '7天以上' },
   { key: 'unknown', label: '未知' },
 ];
 
@@ -69,7 +69,8 @@ const quotaBucketDefinitions: Array<{ key: QuotaBucketKey; label: string }> = [
   { key: 'low', label: '1-20%' },
   { key: 'mid', label: '21-50%' },
   { key: 'healthy', label: '51-80%' },
-  { key: 'full', label: '81-100%' },
+  { key: 'high', label: '81-90%' },
+  { key: 'full', label: '91-100%' },
 ];
 
 const planLabel = (plan: string) => {
@@ -140,6 +141,7 @@ const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
 const quickFilterLabel = (filter: QuickFilter) => {
   if (filter === 'all') return '全部账号';
   if (filter === 'action') return '异常账号';
+  if (filter === 'enabled') return '启用账号';
   if (filter === 'available') return '可用账号';
   if (filter === 'limited') return '受限账号';
   if (filter === 'error') return '失败/不可用';
@@ -161,6 +163,7 @@ const matchesQuickFilter = (
 ) => {
   if (filter === 'all') return true;
   if (filter === 'action') return isCodexQuotaUnavailable(account);
+  if (filter === 'enabled') return !account.disabled && account.status !== 'disabled';
   if (filter === 'available') return !account.disabled && account.status === 'available';
   if (filter === 'limited') return !account.disabled && account.status === 'limited';
   if (filter === 'error') return !account.disabled && account.status === 'error';
@@ -176,7 +179,10 @@ const matchesQuickFilter = (
   if (filter === 'disabled') return account.disabled || account.status === 'disabled';
   if (filter.startsWith('quota:')) return filter === `quota:${quotaBucketKey(account)}`;
   if (filter === 'recovery:restored') {
-    return getRecoveryDayBucketKey(account.currentResetAt) === 'restored' || todayRestoredFiles.has(account.file);
+    return (
+      getRecoveryDayBucketKey(account.currentResetAt) === 'restored' ||
+      todayRestoredFiles.has(account.file)
+    );
   }
   return filter === `recovery:${getRecoveryDayBucketKey(account.currentResetAt)}`;
 };
@@ -187,7 +193,8 @@ const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['
     { label: '1-20%', count: 0 },
     { label: '21-50%', count: 0 },
     { label: '51-80%', count: 0 },
-    { label: '81-100%', count: 0 },
+    { label: '81-90%', count: 0 },
+    { label: '91-100%', count: 0 },
   ];
   const values: number[] = [];
   const plans: Record<string, number> = {};
@@ -235,7 +242,8 @@ const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['
     else if (value <= 20) buckets[1].count += 1;
     else if (value <= 50) buckets[2].count += 1;
     else if (value <= 80) buckets[3].count += 1;
-    else buckets[4].count += 1;
+    else if (value <= 90) buckets[4].count += 1;
+    else buckets[5].count += 1;
   });
 
   if (values.length > 0) {
@@ -699,18 +707,40 @@ export function CodexQuotaDashboardPage() {
 
   const summary = data?.summary;
   const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
+  const quotaBucketCounts = useMemo(() => {
+    const counts: Record<QuotaBucketKey, number> = {
+      zero: 0,
+      low: 0,
+      mid: 0,
+      healthy: 0,
+      high: 0,
+      full: 0,
+    };
+    (data?.accounts ?? []).forEach((account) => {
+      const key = quotaBucketKey(account);
+      if (key) counts[key] += 1;
+    });
+    return counts;
+  }, [data?.accounts]);
   const quickViews: Array<{ filter: QuickFilter; label: string; count: number | string }> = [
     { filter: 'all', label: '全部', count: summary?.total ?? '-' },
     { filter: 'available', label: '可用', count: summary?.available ?? '-' },
     { filter: 'limited', label: '受限', count: summary?.limited ?? '-' },
     { filter: 'action', label: '异常', count: summary?.errors ?? '-' },
+    {
+      filter: 'enabled',
+      label: '启用',
+      count:
+        summary && typeof summary.total === 'number' && typeof summary.disabled === 'number'
+          ? summary.total - summary.disabled
+          : '-',
+    },
     { filter: 'disabled', label: '停用', count: summary?.disabled ?? '-' },
   ];
-  const quotaBuckets = summary?.buckets ?? [];
   const quotaBucketViews = quotaBucketDefinitions.map((definition) => ({
     filter: `quota:${definition.key}` as QuickFilter,
     label: definition.label,
-    count: quotaBuckets.find((bucket) => bucket.label === definition.label)?.count ?? 0,
+    count: quotaBucketCounts[definition.key],
   }));
   const recoveryViews: Array<{ filter: QuickFilter; label: string; count: number }> =
     recoveryBuckets.map((bucket) => ({

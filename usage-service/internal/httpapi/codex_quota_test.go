@@ -72,6 +72,37 @@ func TestBuildCodexQuotaSummaryCountsDisabledByLocalSwitch(t *testing.T) {
 	}
 }
 
+func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
+	values := []int{0, 20, 50, 80, 90, 100}
+	accounts := make([]codexQuotaAccount, 0, len(values))
+	for _, value := range values {
+		remaining := value
+		accounts = append(accounts, codexQuotaAccount{
+			Status:                  "available",
+			CurrentRemainingPercent: &remaining,
+		})
+	}
+
+	summary := buildCodexQuotaSummary(accounts)
+
+	want := []codexQuotaBucket{
+		{Label: "0%", Count: 1},
+		{Label: "1-20%", Count: 1},
+		{Label: "21-50%", Count: 1},
+		{Label: "51-80%", Count: 1},
+		{Label: "81-90%", Count: 1},
+		{Label: "91-100%", Count: 1},
+	}
+	if len(summary.Buckets) != len(want) {
+		t.Fatalf("bucket count = %d, want %d", len(summary.Buckets), len(want))
+	}
+	for index := range want {
+		if summary.Buckets[index] != want[index] {
+			t.Fatalf("bucket[%d] = %+v, want %+v", index, summary.Buckets[index], want[index])
+		}
+	}
+}
+
 func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndError(t *testing.T) {
 	authDir := t.TempDir()
 	writeTestCodexAuth(t, authDir, "limited.json", false)

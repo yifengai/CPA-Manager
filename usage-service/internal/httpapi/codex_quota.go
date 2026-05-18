@@ -458,7 +458,8 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 			{Label: "1-20%", Count: 0},
 			{Label: "21-50%", Count: 0},
 			{Label: "51-80%", Count: 0},
-			{Label: "81-100%", Count: 0},
+			{Label: "81-90%", Count: 0},
+			{Label: "91-100%", Count: 0},
 		},
 	}
 	for _, account := range accounts {
@@ -499,8 +500,10 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 			summary.Buckets[2].Count++
 		case value <= 80:
 			summary.Buckets[3].Count++
-		default:
+		case value <= 90:
 			summary.Buckets[4].Count++
+		default:
+			summary.Buckets[5].Count++
 		}
 	}
 	if len(values) > 0 {
