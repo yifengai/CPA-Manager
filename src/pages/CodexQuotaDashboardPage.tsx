@@ -17,7 +17,6 @@ type QuickFilter =
   | 'all'
   | 'action'
   | 'available'
-  | 'enabled'
   | 'limited'
   | 'error'
   | 'low'
@@ -142,7 +141,6 @@ const quickFilterLabel = (filter: QuickFilter) => {
   if (filter === 'all') return '全部账号';
   if (filter === 'action') return '异常账号';
   if (filter === 'available') return '可用账号';
-  if (filter === 'enabled') return '已启用账号';
   if (filter === 'limited') return '受限账号';
   if (filter === 'error') return '失败/不可用';
   if (filter === 'low') return '低余量账号';
@@ -159,10 +157,9 @@ const quickFilterLabel = (filter: QuickFilter) => {
 const matchesQuickFilter = (account: CodexQuotaAccount, filter: QuickFilter) => {
   if (filter === 'all') return true;
   if (filter === 'action') return getAccountHealth(account).tone === 'danger';
-  if (filter === 'available') return account.status === 'available';
-  if (filter === 'enabled') return !account.disabled && account.status !== 'disabled';
-  if (filter === 'limited') return account.status === 'limited';
-  if (filter === 'error') return account.status === 'error';
+  if (filter === 'available') return !account.disabled && account.status === 'available';
+  if (filter === 'limited') return !account.disabled && account.status === 'limited';
+  if (filter === 'error') return !account.disabled && account.status === 'error';
   if (filter === 'low') {
     return (
       typeof account.currentRemainingPercent === 'number' && account.currentRemainingPercent <= 20
@@ -215,7 +212,8 @@ const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['
   };
 
   accounts.forEach((account) => {
-    if (account.status === 'available') summary.available += 1;
+    if (account.disabled) summary.disabled += 1;
+    else if (account.status === 'available') summary.available += 1;
     else if (account.status === 'limited') summary.limited += 1;
     else if (account.status === 'disabled') summary.disabled += 1;
     else summary.errors += 1;
@@ -592,14 +590,12 @@ export function CodexQuotaDashboardPage() {
 
   const summary = data?.summary;
   const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
-  const enabledCount =
-    data?.accounts.filter((account) => !account.disabled && account.status !== 'disabled').length ??
-    '-';
   const quickViews: Array<{ filter: QuickFilter; label: string; count: number | string }> = [
     { filter: 'all', label: '全部', count: summary?.total ?? '-' },
+    { filter: 'available', label: '可用', count: summary?.available ?? '-' },
+    { filter: 'limited', label: '受限', count: summary?.limited ?? '-' },
     { filter: 'action', label: '异常', count: healthCounts.danger },
     { filter: 'disabled', label: '停用', count: summary?.disabled ?? '-' },
-    { filter: 'enabled', label: '已启用', count: enabledCount },
   ];
   const quotaBuckets = summary?.buckets ?? [];
   const quotaBucketViews = quotaBucketDefinitions.map((definition) => ({

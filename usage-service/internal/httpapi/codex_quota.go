@@ -314,11 +314,6 @@ func fetchCodexQuota(ctx context.Context, account codexAuthFile) codexQuotaAccou
 		LongResetAt:    "",
 		CreditsBalance: nil,
 	}
-	if account.Disabled {
-		base.Status = "disabled"
-		base.StatusText = "已停用"
-		return base
-	}
 	if strings.TrimSpace(account.AccessToken) == "" {
 		base.Status = "error"
 		base.StatusText = "缺少Token"
@@ -384,6 +379,10 @@ func fetchCodexQuota(ctx context.Context, account codexAuthFile) codexQuotaAccou
 		base.Status = "limited"
 		base.StatusText = "受限"
 	}
+	if account.Disabled {
+		base.Status = "disabled"
+		base.StatusText = "已停用"
+	}
 	if base.CurrentRemainingPercent != nil {
 		base.SortRemaining = float64(*base.CurrentRemainingPercent)
 	}
@@ -433,15 +432,19 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 		},
 	}
 	for _, account := range accounts {
-		switch account.Status {
-		case "available":
-			summary.Available++
-		case "limited":
-			summary.Limited++
-		case "disabled":
+		if account.Disabled {
 			summary.Disabled++
-		default:
-			summary.Errors++
+		} else {
+			switch account.Status {
+			case "available":
+				summary.Available++
+			case "limited":
+				summary.Limited++
+			case "disabled":
+				summary.Disabled++
+			default:
+				summary.Errors++
+			}
 		}
 		if account.Plan != "" {
 			plans[account.Plan]++
