@@ -19,6 +19,7 @@ const defaultSecretFile = "/run/secrets/cpa_management_key"
 type Config struct {
 	HTTPAddr       string
 	DBPath         string
+	DataDir        string
 	CPAUpstreamURL string
 	ManagementKey  string
 	CollectorMode  string
@@ -28,6 +29,8 @@ type Config struct {
 	PollInterval   time.Duration
 	QueryLimit     int
 	PanelPath      string
+	CodexAuthDir   string
+	DeletedAuthDir string
 	CORSOrigins    []string
 	TLSSkipVerify  bool
 }
@@ -45,6 +48,8 @@ type fileConfig struct {
 	PollIntervalMS    int      `json:"pollIntervalMs,omitempty"`
 	QueryLimit        int      `json:"queryLimit,omitempty"`
 	PanelPath         string   `json:"panelPath,omitempty"`
+	CodexAuthDir      string   `json:"codexAuthDir,omitempty"`
+	DeletedAuthDir    string   `json:"deletedAuthDir,omitempty"`
 	CORSOrigins       []string `json:"corsOrigins,omitempty"`
 	TLSSkipVerify     bool     `json:"tlsSkipVerify,omitempty"`
 }
@@ -76,6 +81,7 @@ func Load() (Config, error) {
 	return Config{
 		HTTPAddr:       env("HTTP_ADDR", stringFallback(cfgFile.HTTPAddr, "0.0.0.0:18317")),
 		DBPath:         env("USAGE_DB_PATH", dbPathFallback),
+		DataDir:        dataDir,
 		CPAUpstreamURL: env("CPA_UPSTREAM_URL", cfgFile.CPAUpstreamURL),
 		ManagementKey:  readSecret("CPA_MANAGEMENT_KEY", "CPA_MANAGEMENT_KEY_FILE", managementKeyFile),
 		CollectorMode:  normalizeCollectorMode(env("USAGE_COLLECTOR_MODE", stringFallback(cfgFile.CollectorMode, "auto"))),
@@ -85,6 +91,8 @@ func Load() (Config, error) {
 		PollInterval:   time.Duration(envInt("USAGE_POLL_INTERVAL_MS", intFallback(cfgFile.PollIntervalMS, 500))) * time.Millisecond,
 		QueryLimit:     envInt("USAGE_QUERY_LIMIT", intFallback(cfgFile.QueryLimit, 50000)),
 		PanelPath:      env("PANEL_PATH", resolveConfigPath(cfgFile.PanelPath, cfgDir)),
+		CodexAuthDir:   env("CPA_CODEX_AUTH_DIR", resolveConfigPath(cfgFile.CodexAuthDir, cfgDir)),
+		DeletedAuthDir: env("CPA_DELETED_AUTH_DIR", resolveConfigPath(stringFallback(cfgFile.DeletedAuthDir, filepath.Join(dataDir, "deleted-auths")), cfgDir)),
 		CORSOrigins:    splitCSV(env("USAGE_CORS_ORIGINS", strings.Join(sliceFallback(cfgFile.CORSOrigins, []string{"*"}), ","))),
 		TLSSkipVerify:  envBool("USAGE_RESP_TLS_SKIP_VERIFY", cfgFile.TLSSkipVerify),
 	}, nil

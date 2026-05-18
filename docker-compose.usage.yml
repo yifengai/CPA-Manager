@@ -17,8 +17,11 @@ services:
       USAGE_POLL_INTERVAL_MS: "500"
       USAGE_QUERY_LIMIT: "50000"
       USAGE_CORS_ORIGINS: "*"
+      CPA_CODEX_AUTH_DIR: "/auths"
+      CPA_DELETED_AUTH_DIR: "/data/deleted-auths"
     volumes:
       - cpa-manager-data:/data
+      - ${CPA_CODEX_AUTH_PATH:-./auths}:/auths
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18317/health"]
       interval: 10s
