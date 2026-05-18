@@ -10,6 +10,10 @@ import styles from './CodexQuotaDashboardPage.module.scss';
 type StatusFilter = 'all' | 'available' | 'limited' | 'disabled' | 'error';
 type SortMode = 'remaining-asc' | 'remaining-desc' | 'reset-asc' | 'account-asc';
 type RiskGroupKey = 'needsAction' | 'low' | 'normal' | 'disabled';
+type RecoveryBucketKey = 'hour' | 'today' | 'tomorrow' | 'soon' | 'later' | 'unknown';
+type QuickFilter = 'all' | 'available' | 'limited' | 'error' | 'low' | `recovery:${RecoveryBucketKey}`;
+
+const quotaCacheKey = 'cpa-manager:codex-quota:last-snapshot:v1';
 
 const statusOptions = [
   { value: 'all', label: '全部状态' },
@@ -24,6 +28,15 @@ const sortOptions = [
   { value: 'remaining-desc', label: '剩余额度从高到低' },
   { value: 'reset-asc', label: '恢复时间从近到远' },
   { value: 'account-asc', label: '账号名称 A-Z' },
+];
+
+const recoveryBuckets: Array<{ key: RecoveryBucketKey; label: string }> = [
+  { key: 'hour', label: '1小时内恢复' },
+  { key: 'today', label: '今天恢复' },
+  { key: 'tomorrow', label: '明天恢复' },
+  { key: 'soon', label: '3天内恢复' },
+  { key: 'later', label: '超过3天' },
+  { key: 'unknown', label: '未知/不适用' },
 ];
 
 const planLabel = (plan: string) => {
@@ -95,7 +108,7 @@ const riskGroupKey = (account: CodexQuotaAccount): RiskGroupKey => {
   return 'normal';
 };
 
-const recoveryBucketKey = (account: CodexQuotaAccount) => {
+const recoveryBucketKey = (account: CodexQuotaAccount): RecoveryBucketKey => {
   const resetAt = sortTime(account.currentResetAt);
   if (resetAt === Number.MAX_SAFE_INTEGER) return 'unknown';
   const now = Date.now();
@@ -114,12 +127,124 @@ const previewAccountNames = (accounts: CodexQuotaAccount[]) =>
     .map((account) => account.account)
     .join('、');
 
+const quickFilterLabel = (filter: QuickFilter) => {
+  if (filter === 'all') return '全部账号';
+  if (filter === 'available') return '可用账号';
+  if (filter === 'limited') return '受限账号';
+  if (filter === 'error') return '失败/不可用';
+  if (filter === 'low') return '低余量账号';
+  const bucket = recoveryBuckets.find((item) => filter === `recovery:${item.key}`);
+  return bucket ? bucket.label : '全部账号';
+};
+
+const matchesQuickFilter = (account: CodexQuotaAccount, filter: QuickFilter) => {
+  if (filter === 'all') return true;
+  if (filter === 'available') return account.status === 'available';
+  if (filter === 'limited') return account.status === 'limited';
+  if (filter === 'error') return account.status === 'error';
+  if (filter === 'low') {
+    return typeof account.currentRemainingPercent === 'number' && account.currentRemainingPercent <= 20;
+  }
+  return filter === `recovery:${recoveryBucketKey(account)}`;
+};
+
+const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['summary'] => {
+  const buckets = [
+    { label: '0%', count: 0 },
+    { label: '1-20%', count: 0 },
+    { label: '21-50%', count: 0 },
+    { label: '51-80%', count: 0 },
+    { label: '81-100%', count: 0 },
+  ];
+  const values: number[] = [];
+  const plans: Record<string, number> = {};
+  const generatedAt = new Date()
+    .toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+    .replace(/\//g, '-');
+  const summary: CodexQuotaResponse['summary'] = {
+    generatedAt,
+    total: accounts.length,
+    available: 0,
+    limited: 0,
+    disabled: 0,
+    errors: 0,
+    low: 0,
+    critical: 0,
+    average: null,
+    median: null,
+    plans,
+    buckets,
+  };
+
+  accounts.forEach((account) => {
+    if (account.status === 'available') summary.available += 1;
+    else if (account.status === 'limited') summary.limited += 1;
+    else if (account.status === 'disabled') summary.disabled += 1;
+    else summary.errors += 1;
+
+    if (account.plan) plans[account.plan] = (plans[account.plan] ?? 0) + 1;
+    const value = account.currentRemainingPercent;
+    if (typeof value !== 'number') return;
+    values.push(value);
+    if (value <= 10) summary.critical += 1;
+    if (value <= 20) summary.low += 1;
+    if (value === 0) buckets[0].count += 1;
+    else if (value <= 20) buckets[1].count += 1;
+    else if (value <= 50) buckets[2].count += 1;
+    else if (value <= 80) buckets[3].count += 1;
+    else buckets[4].count += 1;
+  });
+
+  if (values.length > 0) {
+    values.sort((left, right) => left - right);
+    const total = values.reduce((sum, value) => sum + value, 0);
+    summary.average = Math.round((total / values.length) * 10) / 10;
+    const middle = Math.floor(values.length / 2);
+    summary.median =
+      values.length % 2 === 1
+        ? values[middle]
+        : Math.round(((values[middle - 1] + values[middle]) / 2) * 10) / 10;
+  }
+  return summary;
+};
+
+const readCachedQuota = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(quotaCacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CodexQuotaResponse;
+    if (!parsed || !Array.isArray(parsed.accounts) || !parsed.summary) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedQuota = (payload: CodexQuotaResponse) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(quotaCacheKey, JSON.stringify(payload));
+  } catch {
+    // localStorage may be unavailable in private mode; the page still works without cache.
+  }
+};
+
 export function CodexQuotaDashboardPage() {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
 
-  const [data, setData] = useState<CodexQuotaResponse | null>(null);
+  const [data, setData] = useState<CodexQuotaResponse | null>(() => readCachedQuota());
   const [loading, setLoading] = useState(false);
   const [actionFile, setActionFile] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -127,10 +252,19 @@ export function CodexQuotaDashboardPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [sortMode, setSortMode] = useState<SortMode>('remaining-asc');
-  const [lastRefreshAt, setLastRefreshAt] = useState('');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [lastRefreshAt, setLastRefreshAt] = useState(() => readCachedQuota()?.summary.generatedAt ?? '');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
   const disabled = connectionStatus !== 'connected';
   const controlsDisabled = disabled || loading || actionFile !== null;
+
+  const activateQuickFilter = useCallback((filter: QuickFilter) => {
+    setQuickFilter(filter);
+    setSearch('');
+    setStatusFilter('all');
+    setPlanFilter('all');
+    setSelectedFiles(new Set());
+  }, []);
 
   const loadQuota = useCallback(async () => {
     setLoading(true);
@@ -138,6 +272,7 @@ export function CodexQuotaDashboardPage() {
     try {
       const response = await codexQuotaApi.list();
       setData(response);
+      writeCachedQuota(response);
       setLastRefreshAt(response.summary.generatedAt);
       setSelectedFiles((previous) => {
         const existing = new Set(response.accounts.map((account) => account.file));
@@ -171,6 +306,7 @@ export function CodexQuotaDashboardPage() {
   const visibleAccounts = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = (data?.accounts ?? []).filter((account) => {
+      if (!matchesQuickFilter(account, quickFilter)) return false;
       if (statusFilter !== 'all' && account.status !== statusFilter) return false;
       if (planFilter !== 'all' && (account.plan || '未知') !== planFilter) return false;
       if (!query) return true;
@@ -199,7 +335,7 @@ export function CodexQuotaDashboardPage() {
       }
       return (left.currentRemainingPercent ?? 999) - (right.currentRemainingPercent ?? 999);
     });
-  }, [data?.accounts, planFilter, search, sortMode, statusFilter]);
+  }, [data?.accounts, planFilter, quickFilter, search, sortMode, statusFilter]);
 
   const groupedVisibleAccounts = useMemo(() => {
     const groups: Array<{
@@ -325,6 +461,40 @@ export function CodexQuotaDashboardPage() {
     );
   };
 
+  const handleRefreshSelected = async () => {
+    if (!data || selectedFiles.size === 0) {
+      showNotification('请先选择要刷新的账号', 'info');
+      return;
+    }
+    setActionFile('__refresh_selected__');
+    setError('');
+    try {
+      const response = await codexQuotaApi.refreshSelected(Array.from(selectedFiles));
+      const refreshed = new Map(response.accounts.map((account) => [account.file, account]));
+      const accounts = data.accounts.map((account) => refreshed.get(account.file) ?? account);
+      const summary = buildClientSummary(accounts);
+      summary.generatedAt = response.summary.generatedAt;
+      const mergedPayload = { summary, accounts };
+      setData(mergedPayload);
+      writeCachedQuota(mergedPayload);
+      setLastRefreshAt(response.summary.generatedAt);
+      setSelectedFiles((previous) => {
+        const existing = new Set(accounts.map((account) => account.file));
+        const next = new Set<string>();
+        previous.forEach((file) => {
+          if (existing.has(file)) next.add(file);
+        });
+        return next;
+      });
+      showNotification(`已刷新 ${response.accounts.length} 个选中账号`, 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '刷新选中账号失败';
+      showNotification(`刷新选中账号失败：${message}`, 'error');
+    } finally {
+      setActionFile(null);
+    }
+  };
+
   const confirmDelete = (account: CodexQuotaAccount) => {
     showConfirmation({
       title: '删除账号文件',
@@ -440,6 +610,27 @@ export function CodexQuotaDashboardPage() {
   };
 
   const summary = data?.summary;
+  const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
+
+  const summaryCards: Array<{
+    key: string;
+    label: string;
+    value: string | number;
+    meta: string;
+    filter?: QuickFilter;
+  }> = [
+    { key: 'total', label: '账号总数', value: summary?.total ?? '-', meta: '本次纳入统计', filter: 'all' },
+    { key: 'available', label: '可用账号', value: summary?.available ?? '-', meta: '可继续调用', filter: 'available' },
+    { key: 'limited', label: '受限账号', value: summary?.limited ?? '-', meta: '建议暂停使用', filter: 'limited' },
+    { key: 'error', label: '失败/不可用', value: summary?.errors ?? '-', meta: '优先检查 Token', filter: 'error' },
+    { key: 'low', label: '低余量账号', value: summary?.low ?? '-', meta: '剩余 20% 及以下', filter: 'low' },
+    {
+      key: 'average',
+      label: '平均剩余额度',
+      value: typeof summary?.average === 'number' ? `${summary.average}%` : '-',
+      meta: `中位数 ${typeof summary?.median === 'number' ? `${summary.median}%` : '-'}`,
+    },
+  ];
 
   return (
     <div className={styles.container}>
@@ -462,36 +653,33 @@ export function CodexQuotaDashboardPage() {
       {error && <div className={styles.errorBox}>{error}</div>}
 
       <section className={styles.summaryGrid} aria-label="账号余量总览">
-        <div className={styles.summaryCard}>
-          <span>账号总数</span>
-          <strong>{summary?.total ?? '-'}</strong>
-          <small>本次纳入统计</small>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>可用账号</span>
-          <strong>{summary?.available ?? '-'}</strong>
-          <small>可继续调用</small>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>受限账号</span>
-          <strong>{summary?.limited ?? '-'}</strong>
-          <small>建议暂停使用</small>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>失败/不可用</span>
-          <strong>{summary?.errors ?? '-'}</strong>
-          <small>优先检查 Token</small>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>低余量账号</span>
-          <strong>{summary?.low ?? '-'}</strong>
-          <small>剩余 20% 及以下</small>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>平均剩余额度</span>
-          <strong>{typeof summary?.average === 'number' ? `${summary.average}%` : '-'}</strong>
-          <small>中位数 {typeof summary?.median === 'number' ? `${summary.median}%` : '-'}</small>
-        </div>
+        {summaryCards.map((card) =>
+          card.filter ? (
+            <button
+              key={card.key}
+              type="button"
+              className={[
+                styles.summaryCard,
+                styles.clickableCard,
+                quickFilter === card.filter ? styles.activeCard : '',
+              ].filter(Boolean).join(' ')}
+              aria-pressed={quickFilter === card.filter}
+              onClick={() => {
+                if (card.filter) activateQuickFilter(card.filter);
+              }}
+            >
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <small>{card.meta}</small>
+            </button>
+          ) : (
+            <div className={styles.summaryCard} key={card.key}>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <small>{card.meta}</small>
+            </div>
+          )
+        )}
       </section>
 
       <section className={styles.insightGrid}>
@@ -535,12 +723,24 @@ export function CodexQuotaDashboardPage() {
         <div className={styles.panel}>
           <h2>恢复时间看板</h2>
           <div className={styles.recoveryGrid}>
-            <div><strong>{recoverySummary.hour}</strong><span>1小时内恢复</span></div>
-            <div><strong>{recoverySummary.today}</strong><span>今天恢复</span></div>
-            <div><strong>{recoverySummary.tomorrow}</strong><span>明天恢复</span></div>
-            <div><strong>{recoverySummary.soon}</strong><span>3天内恢复</span></div>
-            <div><strong>{recoverySummary.later}</strong><span>超过3天</span></div>
-            <div><strong>{recoverySummary.unknown}</strong><span>未知/不适用</span></div>
+            {recoveryBuckets.map((bucket) => {
+              const filter: QuickFilter = `recovery:${bucket.key}`;
+              return (
+                <button
+                  key={bucket.key}
+                  type="button"
+                  className={[
+                    styles.recoveryCard,
+                    quickFilter === filter ? styles.activeCard : '',
+                  ].filter(Boolean).join(' ')}
+                  aria-pressed={quickFilter === filter}
+                  onClick={() => activateQuickFilter(filter)}
+                >
+                  <strong>{recoverySummary[bucket.key]}</strong>
+                  <span>{bucket.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
         <div className={styles.panel}>
@@ -644,10 +844,23 @@ export function CodexQuotaDashboardPage() {
         <div className={styles.tableHeader}>
           <div>
             <h2>账号列表</h2>
-            <span>显示 {visibleAccounts.length} / {data?.accounts.length ?? 0} 个账号</span>
+            <span>
+              显示 {visibleAccounts.length} / {data?.accounts.length ?? 0} 个账号
+              {activeQuickFilterLabel ? ` · 当前面板筛选：${activeQuickFilterLabel}` : ''}
+            </span>
           </div>
           <div className={styles.batchActions}>
             <span>已选 {selectedFiles.size} 个</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={controlsDisabled || selectedFiles.size === 0}
+              loading={actionFile === '__refresh_selected__'}
+              onClick={() => void handleRefreshSelected()}
+            >
+              <IconRefreshCw size={14} />
+              <span>刷新已选</span>
+            </Button>
             <Button
               size="sm"
               variant="secondary"

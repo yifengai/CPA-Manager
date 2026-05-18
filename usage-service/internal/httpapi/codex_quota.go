@@ -87,6 +87,10 @@ type codexQuotaActionRequest struct {
 	Disabled *bool  `json:"disabled,omitempty"`
 }
 
+type codexQuotaRefreshRequest struct {
+	Files []string `json:"files"`
+}
+
 type codexUsageWindow struct {
 	UsedPercent any `json:"used_percent"`
 	ResetAt     any `json:"reset_at"`
@@ -113,6 +117,8 @@ func (s *Server) handleCodexQuota(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case path == "/v0/management/codex-quota" && r.Method == http.MethodGet:
 		s.handleCodexQuotaList(w, r)
+	case path == "/v0/management/codex-quota/refresh" && r.Method == http.MethodPost:
+		s.handleCodexQuotaRefresh(w, r)
 	case path == "/v0/management/codex-quota/account" && r.Method == http.MethodPatch:
 		s.handleCodexQuotaAccountPatch(w, r)
 	case path == "/v0/management/codex-quota/account" && r.Method == http.MethodDelete:
@@ -138,6 +144,51 @@ func (s *Server) handleCodexQuotaList(w http.ResponseWriter, r *http.Request) {
 			return left.SortRemaining < right.SortRemaining
 		}
 		return strings.ToLower(left.Account) < strings.ToLower(right.Account)
+	})
+	writeJSON(w, http.StatusOK, codexQuotaResponse{
+		Summary:  buildCodexQuotaSummary(results),
+		Accounts: results,
+	})
+}
+
+func (s *Server) handleCodexQuotaRefresh(w http.ResponseWriter, r *http.Request) {
+	var req codexQuotaRefreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	wanted := map[string]struct{}{}
+	for _, file := range req.Files {
+		name := filepath.Base(strings.TrimSpace(file))
+		if name == "." || name == "/" || !strings.HasSuffix(name, ".json") {
+			writeError(w, http.StatusBadRequest, errors.New("invalid auth file name"))
+			return
+		}
+		wanted[name] = struct{}{}
+	}
+	if len(wanted) == 0 {
+		writeError(w, http.StatusBadRequest, errors.New("files are required"))
+		return
+	}
+
+	accounts, err := loadCodexAuthFiles(s.cfg.CodexAuthDir)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	selected := make([]codexAuthFile, 0, len(wanted))
+	for _, account := range accounts {
+		if _, ok := wanted[account.File]; ok {
+			selected = append(selected, account)
+		}
+	}
+	if len(selected) == 0 {
+		writeError(w, http.StatusNotFound, errors.New("selected auth files were not found"))
+		return
+	}
+	results := fetchCodexQuotas(r.Context(), selected)
+	sort.Slice(results, func(i, j int) bool {
+		return strings.ToLower(results[i].Account) < strings.ToLower(results[j].Account)
 	})
 	writeJSON(w, http.StatusOK, codexQuotaResponse{
 		Summary:  buildCodexQuotaSummary(results),

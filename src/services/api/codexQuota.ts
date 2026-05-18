@@ -50,6 +50,9 @@ export interface CodexQuotaResponse {
 export const codexQuotaApi = {
   list: () => apiClient.get<CodexQuotaResponse>('/codex-quota'),
 
+  refreshSelected: (files: string[]) =>
+    apiClient.post<CodexQuotaResponse>('/codex-quota/refresh', { files }),
+
   setDisabled: (file: string, disabled: boolean) =>
     apiClient.patch<{ status: 'ok'; file: string; disabled: boolean }>('/codex-quota/account', {
       file,
