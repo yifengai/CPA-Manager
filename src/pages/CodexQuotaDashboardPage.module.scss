@@ -33,6 +33,25 @@
   line-height: 1.6;
 }
 
+.refreshGroup {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+
+  @include mobile {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.refreshTime {
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .errorBox {
   padding: $spacing-md;
   border: 1px solid var(--danger-color);
@@ -236,6 +255,24 @@
     color: var(--text-secondary);
     font-size: 13px;
   }
+
+  @include tablet {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.batchActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+
+  @include mobile {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .tableWrap {
@@ -245,7 +282,7 @@
 
 .tableWrap table {
   width: 100%;
-  min-width: 1380px;
+  min-width: 1440px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
@@ -271,6 +308,18 @@
 
 .tableWrap tbody tr:hover {
   background: color-mix(in srgb, var(--bg-secondary) 45%, transparent);
+}
+
+.selectColumn {
+  width: 44px;
+  min-width: 44px;
+  text-align: center;
+
+  input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
 }
 
 .accountCell {

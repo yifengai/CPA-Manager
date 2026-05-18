@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -69,14 +69,17 @@ export function CodexQuotaDashboardPage() {
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
 
   const [data, setData] = useState<CodexQuotaResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [actionFile, setActionFile] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [sortMode, setSortMode] = useState<SortMode>('remaining-asc');
+  const [lastRefreshAt, setLastRefreshAt] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
   const disabled = connectionStatus !== 'connected';
+  const controlsDisabled = disabled || loading || actionFile !== null;
 
   const loadQuota = useCallback(async () => {
     setLoading(true);
@@ -84,6 +87,15 @@ export function CodexQuotaDashboardPage() {
     try {
       const response = await codexQuotaApi.list();
       setData(response);
+      setLastRefreshAt(response.summary.generatedAt);
+      setSelectedFiles((previous) => {
+        const existing = new Set(response.accounts.map((account) => account.file));
+        const next = new Set<string>();
+        previous.forEach((file) => {
+          if (existing.has(file)) next.add(file);
+        });
+        return next;
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : '账号余量加载失败';
       setError(message);
@@ -91,10 +103,6 @@ export function CodexQuotaDashboardPage() {
       setLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    void loadQuota();
-  }, [loadQuota]);
 
   const planOptions = useMemo(() => {
     const plans = new Set<string>();
@@ -142,6 +150,44 @@ export function CodexQuotaDashboardPage() {
     });
   }, [data?.accounts, planFilter, search, sortMode, statusFilter]);
 
+  const selectedAccounts = useMemo(() => {
+    if (!data || selectedFiles.size === 0) return [];
+    return data.accounts.filter((account) => selectedFiles.has(account.file));
+  }, [data, selectedFiles]);
+
+  const visibleSelectableCount = visibleAccounts.length;
+  const selectedVisibleCount = visibleAccounts.filter((account) =>
+    selectedFiles.has(account.file)
+  ).length;
+  const allVisibleSelected =
+    visibleSelectableCount > 0 && selectedVisibleCount === visibleSelectableCount;
+  const selectedEnabledCount = selectedAccounts.filter((account) => !account.disabled).length;
+  const selectedDisabledCount = selectedAccounts.filter((account) => account.disabled).length;
+
+  const toggleSelected = (file: string) => {
+    setSelectedFiles((previous) => {
+      const next = new Set(previous);
+      if (next.has(file)) {
+        next.delete(file);
+      } else {
+        next.add(file);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedFiles((previous) => {
+      const next = new Set(previous);
+      if (allVisibleSelected) {
+        visibleAccounts.forEach((account) => next.delete(account.file));
+      } else {
+        visibleAccounts.forEach((account) => next.add(account.file));
+      }
+      return next;
+    });
+  };
+
   const handleSetDisabled = async (account: CodexQuotaAccount, nextDisabled: boolean) => {
     setActionFile(account.file);
     try {
@@ -151,6 +197,30 @@ export function CodexQuotaDashboardPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : '账号状态更新失败';
       showNotification(`账号状态更新失败：${message}`, 'error');
+    } finally {
+      setActionFile(null);
+    }
+  };
+
+  const handleBatchSetDisabled = async (nextDisabled: boolean) => {
+    const targets = selectedAccounts.filter((account) => account.disabled !== nextDisabled);
+    if (targets.length === 0) {
+      showNotification(nextDisabled ? '选中的账号已经是停用状态' : '选中的账号已经是启用状态', 'info');
+      return;
+    }
+    setActionFile('__batch__');
+    try {
+      const results = await Promise.allSettled(
+        targets.map((account) => codexQuotaApi.setDisabled(account.file, nextDisabled))
+      );
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      const success = results.length - failed;
+      if (failed > 0) {
+        showNotification(`批量操作完成：成功 ${success} 个，失败 ${failed} 个`, 'warning');
+      } else {
+        showNotification(nextDisabled ? `已停用 ${success} 个账号` : `已启用 ${success} 个账号`, 'success');
+      }
+      await loadQuota();
     } finally {
       setActionFile(null);
     }
@@ -179,6 +249,36 @@ export function CodexQuotaDashboardPage() {
     });
   };
 
+  const confirmBatchDelete = () => {
+    const targets = [...selectedAccounts];
+    if (targets.length === 0) return;
+    showConfirmation({
+      title: '批量删除账号文件',
+      message: `确认删除选中的 ${targets.length} 个账号？文件会先归档到 /data/deleted-auths，便于后续恢复。`,
+      confirmText: '批量删除',
+      cancelText: '取消',
+      variant: 'danger',
+      onConfirm: async () => {
+        setActionFile('__batch__');
+        try {
+          const results = await Promise.allSettled(
+            targets.map((account) => codexQuotaApi.deleteAccount(account.file))
+          );
+          const failed = results.filter((result) => result.status === 'rejected').length;
+          const success = results.length - failed;
+          if (failed > 0) {
+            showNotification(`批量删除完成：成功 ${success} 个，失败 ${failed} 个`, 'warning');
+          } else {
+            showNotification(`已归档删除 ${success} 个账号`, 'success');
+          }
+          await loadQuota();
+        } finally {
+          setActionFile(null);
+        }
+      },
+    });
+  };
+
   const summary = data?.summary;
 
   return (
@@ -190,10 +290,13 @@ export function CodexQuotaDashboardPage() {
             统一查看账号可用状态、当前周期剩余额度、恢复时间，并直接启用、停用或归档删除账号。
           </p>
         </div>
-        <Button onClick={() => void loadQuota()} loading={loading} disabled={disabled} size="sm">
-          <IconRefreshCw size={16} />
-          <span>刷新余量</span>
-        </Button>
+        <div className={styles.refreshGroup}>
+          <span className={styles.refreshTime}>当前刷新时间：{lastRefreshAt || '未刷新'}</span>
+          <Button onClick={() => void loadQuota()} loading={loading} disabled={disabled} size="sm">
+            <IconRefreshCw size={16} />
+            <span>刷新余量</span>
+          </Button>
+        </div>
       </div>
 
       {error && <div className={styles.errorBox}>{error}</div>}
@@ -310,13 +413,51 @@ export function CodexQuotaDashboardPage() {
 
       <section className={styles.tablePanel}>
         <div className={styles.tableHeader}>
-          <h2>账号列表</h2>
-          <span>显示 {visibleAccounts.length} / {data?.accounts.length ?? 0} 个账号</span>
+          <div>
+            <h2>账号列表</h2>
+            <span>显示 {visibleAccounts.length} / {data?.accounts.length ?? 0} 个账号</span>
+          </div>
+          <div className={styles.batchActions}>
+            <span>已选 {selectedFiles.size} 个</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={controlsDisabled || selectedDisabledCount === 0}
+              onClick={() => void handleBatchSetDisabled(false)}
+            >
+              批量启用
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={controlsDisabled || selectedEnabledCount === 0}
+              onClick={() => void handleBatchSetDisabled(true)}
+            >
+              批量停用
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={controlsDisabled || selectedFiles.size === 0}
+              onClick={confirmBatchDelete}
+            >
+              批量删除
+            </Button>
+          </div>
         </div>
         <div className={styles.tableWrap}>
           <table>
             <thead>
               <tr>
+                <th className={styles.selectColumn}>
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    disabled={visibleAccounts.length === 0 || controlsDisabled}
+                    aria-label="选择当前列表账号"
+                    onChange={toggleAllVisible}
+                  />
+                </th>
                 <th>账号邮箱</th>
                 <th>当前可用状态</th>
                 <th>账号类型</th>
@@ -334,15 +475,28 @@ export function CodexQuotaDashboardPage() {
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={12} className={styles.emptyCell}>正在加载账号余量...</td>
+                  <td colSpan={13} className={styles.emptyCell}>正在加载账号余量...</td>
+                </tr>
+              ) : !data ? (
+                <tr>
+                  <td colSpan={13} className={styles.emptyCell}>点击“刷新余量”开始查询账号状态</td>
                 </tr>
               ) : visibleAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className={styles.emptyCell}>没有匹配的账号</td>
+                  <td colSpan={13} className={styles.emptyCell}>没有匹配的账号</td>
                 </tr>
               ) : (
                 visibleAccounts.map((account) => (
                   <tr key={account.file}>
+                    <td className={styles.selectColumn}>
+                      <input
+                        type="checkbox"
+                        checked={selectedFiles.has(account.file)}
+                        disabled={controlsDisabled}
+                        aria-label={`选择 ${account.account}`}
+                        onChange={() => toggleSelected(account.file)}
+                      />
+                    </td>
                     <td>
                       <div className={styles.accountCell}>
                         <strong>{account.account}</strong>
@@ -374,7 +528,7 @@ export function CodexQuotaDashboardPage() {
                         <Button
                           size="sm"
                           variant={account.disabled ? 'primary' : 'secondary'}
-                          disabled={disabled || actionFile === account.file}
+                          disabled={controlsDisabled}
                           loading={actionFile === account.file}
                           onClick={() => void handleSetDisabled(account, !account.disabled)}
                         >
@@ -383,7 +537,7 @@ export function CodexQuotaDashboardPage() {
                         <Button
                           size="sm"
                           variant="danger"
-                          disabled={disabled || actionFile === account.file}
+                          disabled={controlsDisabled}
                           onClick={() => confirmDelete(account)}
                           title="归档删除"
                         >
