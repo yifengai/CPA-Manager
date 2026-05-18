@@ -425,6 +425,14 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeIfConfigured(w, r) {
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, "/failed") {
+		if r.Method != http.MethodDelete {
+			methodNotAllowed(w)
+			return
+		}
+		s.handleUsageDeleteFailed(w, r)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		if strings.HasSuffix(r.URL.Path, "/export") {
@@ -446,6 +454,17 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w)
 	}
+}
+
+func (s *Server) handleUsageDeleteFailed(w http.ResponseWriter, r *http.Request) {
+	deleted, err := s.store.DeleteFailedEvents(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"deleted": deleted,
+	})
 }
 
 func (s *Server) handleUsageExport(w http.ResponseWriter, r *http.Request) {

@@ -168,6 +168,75 @@ func TestUsageImportAcceptsLegacyExportAndSkipsDuplicates(t *testing.T) {
 	}
 }
 
+func TestUsageDeleteFailedRemovesOnlyFailedEvents(t *testing.T) {
+	handler := newTestHandler(t, "http://example.test", true)
+	payload := `{
+	  "version": 1,
+	  "exported_at": "2026-01-02T03:04:05Z",
+	  "usage": {
+	    "apis": {
+	      "POST /v1/chat/completions": {
+	        "models": {
+	          "gpt-4o": {
+	            "details": [
+	              {
+	                "timestamp": "2026-01-02T03:04:05Z",
+	                "source": "alice@example.com",
+	                "tokens": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30},
+	                "failed": false
+	              },
+	              {
+	                "timestamp": "2026-01-02T03:05:05Z",
+	                "source": "bob@example.com",
+	                "tokens": {"input_tokens": 100, "output_tokens": 200, "total_tokens": 300},
+	                "failed": true
+	              }
+	            ]
+	          }
+	        }
+	      }
+	    }
+	  }
+	}`
+	postUsageImport(t, handler, payload)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v0/management/usage/failed", nil)
+	req.Header.Set("Authorization", "Bearer management-key")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var response struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", response.Deleted)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/v0/management/usage", nil)
+	req.Header.Set("Authorization", "Bearer management-key")
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("usage status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var usagePayload struct {
+		TotalRequests int64 `json:"total_requests"`
+		FailureCount  int64 `json:"failure_count"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &usagePayload); err != nil {
+		t.Fatalf("decode usage: %v", err)
+	}
+	if usagePayload.TotalRequests != 1 || usagePayload.FailureCount != 0 {
+		t.Fatalf("usage after delete = %#v", usagePayload)
+	}
+}
+
 func postUsageImport(t *testing.T, handler http.Handler, payload string) struct {
 	Format      string   `json:"format"`
 	Added       int      `json:"added"`

@@ -47,6 +47,10 @@ export interface CodexQuotaResponse {
   accounts: CodexQuotaAccount[];
 }
 
+export interface ClearFailedUsageResponse {
+  deleted: number;
+}
+
 export const codexQuotaApi = {
   list: () => apiClient.get<CodexQuotaResponse>('/codex-quota'),
 
@@ -63,4 +67,6 @@ export const codexQuotaApi = {
     apiClient.delete<{ status: 'ok'; file: string; archivedPath: string }>('/codex-quota/account', {
       params: { file },
     }),
+
+  clearFailedUsage: () => apiClient.delete<ClearFailedUsageResponse>('/usage/failed'),
 };

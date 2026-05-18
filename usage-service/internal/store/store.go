@@ -587,6 +587,18 @@ func (s *Store) Counts(ctx context.Context) (events int64, deadLetters int64, er
 	return events, deadLetters, nil
 }
 
+func (s *Store) DeleteFailedEvents(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `delete from usage_events where failed != 0`)
+	if err != nil {
+		return 0, err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
 func (s *Store) ExportJSONL(ctx context.Context) ([]byte, error) {
 	events, err := s.RecentEvents(ctx, 0)
 	if err != nil {

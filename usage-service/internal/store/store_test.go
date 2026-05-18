@@ -70,3 +70,55 @@ func TestStorePersistsAccountSnapshot(t *testing.T) {
 		t.Fatalf("payload AuthProviderSnapshot = %q", detail.AuthProviderSnapshot)
 	}
 }
+
+func TestDeleteFailedEventsOnlyRemovesFailedUsage(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	_, err = db.InsertEvents(context.Background(), []usage.Event{
+		{
+			EventHash:   "success-event",
+			TimestampMS: 1,
+			Timestamp:   "2026-05-18T00:00:00Z",
+			Model:       "gpt-test",
+			TotalTokens: 100,
+			CreatedAtMS: 1,
+		},
+		{
+			EventHash:   "failed-event",
+			TimestampMS: 2,
+			Timestamp:   "2026-05-18T00:01:00Z",
+			Model:       "gpt-test",
+			TotalTokens: 200,
+			Failed:      true,
+			CreatedAtMS: 2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	deleted, err := db.DeleteFailedEvents(context.Background())
+	if err != nil {
+		t.Fatalf("delete failed events: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1", deleted)
+	}
+
+	events, err := db.RecentEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("recent events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if events[0].EventHash != "success-event" {
+		t.Fatalf("remaining event = %q, want success-event", events[0].EventHash)
+	}
+}
