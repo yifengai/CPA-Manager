@@ -5,6 +5,7 @@ import {
   buildRefreshReport,
   buildTodayRestoredHistory,
   getAccountHealth,
+  matchesUsageStrategy,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
 } from './dashboardState';
@@ -206,5 +207,34 @@ describe('codex quota dashboard state', () => {
       file: 'restored.json',
       restoredAt: '2026-05-18 15:45:54',
     });
+  });
+
+  it('matches usage strategy accounts by recovery timing and remaining quota', () => {
+    const now = Date.parse('2026-05-18T16:30:00+08:00');
+    const near = createAccount({
+      currentRemainingPercent: 70,
+      currentResetAt: '2026-05-19 10:00:00',
+    });
+    const tail = createAccount({
+      currentRemainingPercent: 18,
+      currentResetAt: '2026-05-19 10:00:00',
+    });
+    const stable = createAccount({
+      currentRemainingPercent: 88,
+      currentResetAt: '2026-05-25 10:00:00',
+    });
+    const disabled = createAccount({
+      disabled: true,
+      status: 'disabled',
+      currentRemainingPercent: 88,
+      currentResetAt: '2026-05-19 10:00:00',
+    });
+
+    expect(matchesUsageStrategy(near, 'balanced', now)).toBe(true);
+    expect(matchesUsageStrategy(near, 'nearRecovery', now)).toBe(true);
+    expect(matchesUsageStrategy(near, 'drain', now)).toBe(false);
+    expect(matchesUsageStrategy(tail, 'drain', now)).toBe(true);
+    expect(matchesUsageStrategy(stable, 'stable', now)).toBe(true);
+    expect(matchesUsageStrategy(disabled, 'nearRecovery', now)).toBe(false);
   });
 });

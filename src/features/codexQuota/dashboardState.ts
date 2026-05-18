@@ -1,6 +1,7 @@
 import type { CodexQuotaAccount } from '@/services/api';
 
 export type AccountHealthTone = 'good' | 'watch' | 'danger' | 'disabled';
+export type UsageStrategyKey = 'balanced' | 'nearRecovery' | 'stable' | 'drain';
 
 export interface AccountHealth {
   label: string;
@@ -126,6 +127,32 @@ const sortableResetTime = (value: string) => {
   if (!value) return Number.MAX_SAFE_INTEGER;
   const parsed = Date.parse(value.replace(' ', 'T') + '+08:00');
   return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+};
+
+const isCallableAccount = (account: CodexQuotaAccount) =>
+  !account.disabled &&
+  account.status === 'available' &&
+  !account.limitReached &&
+  typeof account.currentRemainingPercent === 'number' &&
+  account.currentRemainingPercent > 0;
+
+export const matchesUsageStrategy = (
+  account: CodexQuotaAccount,
+  strategy: UsageStrategyKey,
+  now = Date.now()
+) => {
+  if (!isCallableAccount(account)) return false;
+
+  const remaining = account.currentRemainingPercent ?? 0;
+  const resetAt = sortableResetTime(account.currentResetAt);
+  const oneDay = 24 * 60 * 60 * 1000;
+  const threeDays = 3 * oneDay;
+  const resetsWithinThreeDays = resetAt !== Number.MAX_SAFE_INTEGER && resetAt > now && resetAt <= now + threeDays;
+
+  if (strategy === 'balanced') return remaining > 10;
+  if (strategy === 'nearRecovery') return resetsWithinThreeDays && remaining > 20;
+  if (strategy === 'stable') return remaining >= 50 && !resetsWithinThreeDays;
+  return resetsWithinThreeDays && remaining > 0 && remaining <= 50;
 };
 
 const beijingDateKey = (timeMs: number) =>

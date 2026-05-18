@@ -7,8 +7,10 @@ import {
   buildTodayRestoredHistory,
   getAccountHealth,
   isCodexQuotaUnavailable,
+  matchesUsageStrategy,
   normalizeQuotaErrorReason,
   type TodayRestoredAccount,
+  type UsageStrategyKey,
 } from '@/features/codexQuota/dashboardState';
 import { codexQuotaApi, type CodexQuotaAccount, type CodexQuotaResponse } from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
@@ -40,6 +42,17 @@ type QuickFilter =
 
 const quotaCacheKey = 'cpa-manager:codex-quota:last-snapshot:v1';
 const todayRestoredHistoryCacheKey = 'cpa-manager:codex-quota:today-restored-history:v1';
+
+const usageStrategyDefinitions: Array<{
+  key: UsageStrategyKey;
+  label: string;
+  description: string;
+}> = [
+  { key: 'balanced', label: '均衡使用', description: '可调用且仍有安全余量' },
+  { key: 'nearRecovery', label: '临近恢复优先', description: '3天内恢复且余量充足' },
+  { key: 'stable', label: '保守稳定', description: '余量充足且短期不恢复' },
+  { key: 'drain', label: '清空尾量', description: '临近恢复且余量不高' },
+];
 
 const statusOptions = [
   { value: 'all', label: '全部状态' },
@@ -345,6 +358,7 @@ export function CodexQuotaDashboardPage() {
   const [planFilter, setPlanFilter] = useState('all');
   const [sortMode, setSortMode] = useState<SortMode>('remaining-asc');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [usageStrategy, setUsageStrategy] = useState<UsageStrategyKey | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState(
     () => readCachedQuota()?.summary.generatedAt ?? ''
   );
@@ -354,6 +368,16 @@ export function CodexQuotaDashboardPage() {
 
   const activateQuickFilter = useCallback((filter: QuickFilter) => {
     setQuickFilter(filter);
+    setUsageStrategy(null);
+    setSearch('');
+    setStatusFilter('all');
+    setPlanFilter('all');
+    setSelectedFiles(new Set());
+  }, []);
+
+  const activateUsageStrategy = useCallback((strategy: UsageStrategyKey) => {
+    setUsageStrategy((previous) => (previous === strategy ? null : strategy));
+    setQuickFilter('all');
     setSearch('');
     setStatusFilter('all');
     setPlanFilter('all');
@@ -425,6 +449,7 @@ export function CodexQuotaDashboardPage() {
   const visibleAccounts = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = (data?.accounts ?? []).filter((account) => {
+      if (usageStrategy && !matchesUsageStrategy(account, usageStrategy)) return false;
       if (!matchesQuickFilter(account, quickFilter, todayRestoredFiles)) return false;
       if (statusFilter !== 'all' && account.status !== statusFilter) return false;
       if (planFilter !== 'all' && (account.plan || '未知') !== planFilter) return false;
@@ -452,9 +477,21 @@ export function CodexQuotaDashboardPage() {
       if (sortMode === 'account-asc') {
         return left.account.localeCompare(right.account);
       }
+      if (usageStrategy === 'nearRecovery' || usageStrategy === 'drain') {
+        return sortTime(left.currentResetAt) - sortTime(right.currentResetAt);
+      }
       return (left.currentRemainingPercent ?? 999) - (right.currentRemainingPercent ?? 999);
     });
-  }, [data?.accounts, planFilter, quickFilter, search, sortMode, statusFilter, todayRestoredFiles]);
+  }, [
+    data?.accounts,
+    planFilter,
+    quickFilter,
+    search,
+    sortMode,
+    statusFilter,
+    todayRestoredFiles,
+    usageStrategy,
+  ]);
 
   const groupedVisibleAccounts = useMemo(() => {
     const groups: Array<{
@@ -711,6 +748,15 @@ export function CodexQuotaDashboardPage() {
 
   const summary = data?.summary;
   const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
+  const activeUsageStrategyLabel = usageStrategy
+    ? usageStrategyDefinitions.find((definition) => definition.key === usageStrategy)?.label
+    : '';
+  const usageStrategyViews = usageStrategyDefinitions.map((definition) => ({
+    ...definition,
+    count: (data?.accounts ?? []).filter((account) =>
+      matchesUsageStrategy(account, definition.key)
+    ).length,
+  }));
   const quickViews: Array<{ filter: QuickFilter; label: string; count: number | string }> = [
     { filter: 'all', label: '全部', count: summary?.total ?? '-' },
     { filter: 'available', label: '可用', count: summary?.available ?? '-' },
@@ -761,6 +807,24 @@ export function CodexQuotaDashboardPage() {
       {error && <div className={styles.errorBox}>{error}</div>}
 
       <section className={styles.filterPanel}>
+        <div className={styles.filterRow}>
+          <h2>调用策略：</h2>
+          <div className={styles.filterButtonGroup}>
+            {usageStrategyViews.map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                className={usageStrategy === view.key ? styles.activeControlButton : ''}
+                aria-pressed={usageStrategy === view.key}
+                title={view.description}
+                onClick={() => activateUsageStrategy(view.key)}
+              >
+                <span>{view.label}</span>
+                <strong>{view.count}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className={styles.filterRow}>
           <h2>账号视图：</h2>
           <div className={styles.filterButtonGroup}>
@@ -857,6 +921,7 @@ export function CodexQuotaDashboardPage() {
             <h2>账号列表</h2>
             <span>
               显示 {visibleAccounts.length} / {data?.accounts.length ?? 0} 个账号
+              {activeUsageStrategyLabel ? ` · 调用策略：${activeUsageStrategyLabel}` : ''}
               {activeQuickFilterLabel ? ` · 当前面板筛选：${activeQuickFilterLabel}` : ''}
             </span>
           </div>
