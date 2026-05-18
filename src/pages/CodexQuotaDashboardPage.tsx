@@ -4,11 +4,13 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
+  buildAccountPoolBalance,
   buildTodayRestoredHistory,
   getRecoveryDayBucketKey,
   getAccountHealth,
   isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
+  type AccountPoolBalanceScope,
   type RecoveryDayBucketKey,
   type TodayRestoredAccount,
 } from '@/features/codexQuota/dashboardState';
@@ -90,6 +92,20 @@ const percent = (value?: number | null) =>
 
 const valueOrDash = (value?: string | number | null) =>
   value === undefined || value === null || value === '' ? '-' : String(value);
+
+const formatCompactNumber = (value: number) => {
+  if (!Number.isFinite(value)) return '-';
+  if (Math.abs(value) >= 1_000_000) {
+    return `${Math.round((value / 1_000_000) * 10) / 10}M`;
+  }
+  if (Math.abs(value) >= 1_000) {
+    return `${Math.round((value / 1_000) * 10) / 10}K`;
+  }
+  return String(Math.round(value));
+};
+
+const formatUsd = (value: number) =>
+  Number.isFinite(value) ? `$${Number.isInteger(value) ? value : value.toFixed(1)}` : '-';
 
 const sortTime = (value: string) => {
   if (!value) return Number.MAX_SAFE_INTEGER;
@@ -329,6 +345,7 @@ export function CodexQuotaDashboardPage() {
   const [planFilter, setPlanFilter] = useState('all');
   const [sortMode, setSortMode] = useState<SortMode>('remaining-asc');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [poolScope, setPoolScope] = useState<AccountPoolBalanceScope>('available');
   const [lastRefreshAt, setLastRefreshAt] = useState(
     () => readCachedQuota()?.summary.generatedAt ?? ''
   );
@@ -707,6 +724,10 @@ export function CodexQuotaDashboardPage() {
 
   const summary = data?.summary;
   const activeQuickFilterLabel = quickFilter === 'all' ? '' : quickFilterLabel(quickFilter);
+  const accountPoolBalance = useMemo(
+    () => buildAccountPoolBalance(data?.accounts ?? [], poolScope),
+    [data?.accounts, poolScope]
+  );
   const quotaBucketCounts = useMemo(() => {
     const counts: Record<QuotaBucketKey, number> = {
       zero: 0,
@@ -777,6 +798,55 @@ export function CodexQuotaDashboardPage() {
       </div>
 
       {error && <div className={styles.errorBox}>{error}</div>}
+
+      <section className={styles.accountPoolPanel}>
+        <div className={styles.accountPoolHeader}>
+          <div>
+            <h2>账号池余量看板</h2>
+            <span>按当前余量估算账号池剩余承接能力</span>
+          </div>
+          <div className={styles.scopeSwitch} aria-label="账号池统计范围">
+            <button
+              type="button"
+              className={poolScope === 'available' ? styles.activeScopeButton : ''}
+              aria-pressed={poolScope === 'available'}
+              onClick={() => setPoolScope('available')}
+            >
+              当前可用池
+            </button>
+            <button
+              type="button"
+              className={poolScope === 'inventory' ? styles.activeScopeButton : ''}
+              aria-pressed={poolScope === 'inventory'}
+              onClick={() => setPoolScope('inventory')}
+            >
+              全部库存
+            </button>
+          </div>
+        </div>
+        <div className={styles.accountPoolMetrics}>
+          <div className={styles.accountPoolMetricCard}>
+            <span>{poolScope === 'available' ? '可用账号' : '库存账号'}</span>
+            <strong>{accountPoolBalance.accountCount}</strong>
+            <small>{poolScope === 'available' ? '当前进入调用池' : '含停用账号'}</small>
+          </div>
+          <div className={`${styles.accountPoolMetricCard} ${styles.accountPoolMetricTokens}`}>
+            <span>估算剩余 Tokens</span>
+            <strong>{formatCompactNumber(accountPoolBalance.estimatedRemainingTokens)}</strong>
+            <small>{accountPoolBalance.measurableAccounts} 个账号参与计算</small>
+          </div>
+          <div className={`${styles.accountPoolMetricCard} ${styles.accountPoolMetricCalls}`}>
+            <span>预计可调用</span>
+            <strong>{accountPoolBalance.estimatedCalls}</strong>
+            <small>按当前平均消耗换算</small>
+          </div>
+          <div className={`${styles.accountPoolMetricCard} ${styles.accountPoolMetricValue}`}>
+            <span>等价价值</span>
+            <strong>{formatUsd(accountPoolBalance.estimatedValueUsd)}</strong>
+            <small>按当前平均花费换算</small>
+          </div>
+        </div>
+      </section>
 
       <section className={styles.filterPanel}>
         <div className={styles.filterRow}>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CodexQuotaAccount } from '@/services/api';
 import {
+  buildAccountPoolBalance,
   buildPriorityAccounts,
   buildRefreshReport,
   buildTodayRestoredHistory,
@@ -36,6 +37,50 @@ const createAccount = (overrides: Partial<CodexQuotaAccount> = {}): CodexQuotaAc
 });
 
 describe('codex quota dashboard state', () => {
+  it('estimates account pool balance from a 4M token and 4 dollar full-cycle baseline', () => {
+    const accounts = [
+      createAccount({
+        account: 'usable-a@example.com',
+        currentRemainingPercent: 50,
+      }),
+      createAccount({
+        account: 'usable-b@example.com',
+        currentRemainingPercent: 25,
+      }),
+      createAccount({
+        account: 'disabled@example.com',
+        disabled: true,
+        status: 'disabled',
+        currentRemainingPercent: 100,
+      }),
+      createAccount({
+        account: 'error@example.com',
+        status: 'error',
+        currentRemainingPercent: 90,
+      }),
+      createAccount({
+        account: 'unknown@example.com',
+        currentRemainingPercent: Number.NaN,
+      }),
+    ];
+
+    expect(buildAccountPoolBalance(accounts, 'available')).toMatchObject({
+      accountCount: 3,
+      estimatedRemainingTokens: 3_000_000,
+      estimatedCalls: 26,
+      estimatedValueUsd: 3,
+      measurableAccounts: 2,
+    });
+
+    expect(buildAccountPoolBalance(accounts, 'inventory')).toMatchObject({
+      accountCount: 5,
+      estimatedRemainingTokens: 10_600_000,
+      estimatedCalls: 90,
+      estimatedValueUsd: 10.6,
+      measurableAccounts: 4,
+    });
+  });
+
   it('classifies token invalidation as a login action instead of a generic error', () => {
     const account = createAccount({
       status: 'error',

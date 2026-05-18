@@ -39,6 +39,48 @@ export interface TodayRestoredAccount {
   resetAfter: string;
 }
 
+export type AccountPoolBalanceScope = 'available' | 'inventory';
+
+export interface AccountPoolBalance {
+  accountCount: number;
+  measurableAccounts: number;
+  estimatedRemainingTokens: number;
+  estimatedCalls: number;
+  estimatedValueUsd: number;
+}
+
+const accountCycleTokens = 4_000_000;
+const accountCycleCostUsd = 4;
+const accountCycleCalls = 34;
+const averageTokensPerCall = accountCycleTokens / accountCycleCalls;
+
+export const buildAccountPoolBalance = (
+  accounts: CodexQuotaAccount[],
+  scope: AccountPoolBalanceScope
+): AccountPoolBalance => {
+  const scopedAccounts = accounts.filter((account) => {
+    if (scope === 'inventory') return true;
+    return !account.disabled && account.status === 'available' && !account.limitReached;
+  });
+  const measurableAccounts = scopedAccounts.filter(
+    (account) =>
+      typeof account.currentRemainingPercent === 'number' &&
+      Number.isFinite(account.currentRemainingPercent)
+  );
+  const estimatedRemainingTokens = measurableAccounts.reduce((total, account) => {
+    const remainingPercent = Math.max(0, Math.min(100, account.currentRemainingPercent ?? 0));
+    return total + accountCycleTokens * (remainingPercent / 100);
+  }, 0);
+
+  return {
+    accountCount: scopedAccounts.length,
+    measurableAccounts: measurableAccounts.length,
+    estimatedRemainingTokens: Math.round(estimatedRemainingTokens),
+    estimatedCalls: Math.round(estimatedRemainingTokens / averageTokensPerCall),
+    estimatedValueUsd: Math.round((estimatedRemainingTokens / accountCycleTokens) * accountCycleCostUsd * 10) / 10,
+  };
+};
+
 export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
   if (account.disabled) return '账号已停用';
   const text = `${account.statusText} ${account.error}`.toLowerCase();
