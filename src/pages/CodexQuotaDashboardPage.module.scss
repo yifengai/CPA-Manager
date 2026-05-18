@@ -113,10 +113,14 @@
 
 .insightGrid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(380px, 1.1fr);
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
   gap: $spacing-md;
 
   @include tablet {
+    grid-template-columns: 1fr;
+  }
+
+  @include mobile {
     grid-template-columns: 1fr;
   }
 }
@@ -199,6 +203,65 @@
   min-width: 2px;
   border-radius: inherit;
   background: var(--success-color);
+}
+
+.recoveryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-sm;
+
+  div {
+    min-height: 74px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+    border-radius: $radius-md;
+    background: var(--bg-secondary);
+  }
+
+  strong,
+  span {
+    display: block;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  span {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  @include mobile {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.quickActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
+
+  :global(.btn) {
+    width: 100%;
+    min-height: 38px;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  :global(.btn > span) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+  }
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
 }
 
 .toolbar {
@@ -310,6 +373,45 @@
   background: color-mix(in srgb, var(--bg-secondary) 45%, transparent);
 }
 
+.groupRow {
+  td {
+    position: sticky;
+    top: 43px;
+    z-index: 1;
+    background: color-mix(in srgb, var(--bg-secondary) 78%, var(--bg-primary));
+    color: var(--text-secondary);
+  }
+
+  strong,
+  span,
+  em {
+    display: inline-flex;
+    align-items: center;
+    margin-right: $spacing-sm;
+    font-style: normal;
+    line-height: 1.4;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  span {
+    white-space: normal;
+  }
+
+  em {
+    min-height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    color: var(--primary-color);
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
 .selectColumn {
   width: 44px;
   min-width: 44px;
@@ -395,4 +497,20 @@
   padding: $spacing-xl;
   color: var(--text-secondary);
   text-align: center;
+}
+
+.confirmPreview {
+  display: grid;
+  gap: $spacing-xs;
+  color: var(--text-secondary);
+  line-height: 1.55;
+
+  p {
+    margin: 0;
+  }
+
+  p:first-child {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
 }

@@ -9,6 +9,7 @@ import styles from './CodexQuotaDashboardPage.module.scss';
 
 type StatusFilter = 'all' | 'available' | 'limited' | 'disabled' | 'error';
 type SortMode = 'remaining-asc' | 'remaining-desc' | 'reset-asc' | 'account-asc';
+type RiskGroupKey = 'needsAction' | 'low' | 'normal' | 'disabled';
 
 const statusOptions = [
   { value: 'all', label: '全部状态' },
@@ -62,6 +63,56 @@ const remainingClass = (account: CodexQuotaAccount) => {
   if (value >= 80) return styles.remainingGood;
   return styles.remainingNormal;
 };
+
+const normalizedErrorReason = (account: CodexQuotaAccount) => {
+  if (account.disabled) return '账号已停用';
+  const text = `${account.statusText} ${account.error}`.toLowerCase();
+  if (!text.trim()) return '-';
+  if (text.includes('token_invalidated') || text.includes('authentication token has been invalidated')) {
+    return 'Token已失效';
+  }
+  if (text.includes('401') || text.includes('unauthorized')) return '登录凭证无效';
+  if (text.includes('timeout') || text.includes('deadline exceeded')) return '查询超时';
+  if (text.includes('429') || text.includes('rate limit')) return '接口限流';
+  if (text.includes('network') || text.includes('connection')) return '网络连接失败';
+  if (account.status === 'limited' || account.limitReached) return '账号已达调用上限';
+  if (account.status === 'error') return '查询失败';
+  return '-';
+};
+
+const riskGroupKey = (account: CodexQuotaAccount): RiskGroupKey => {
+  if (account.disabled || account.status === 'disabled') return 'disabled';
+  const remaining = account.currentRemainingPercent;
+  if (
+    account.status === 'error' ||
+    account.status === 'limited' ||
+    account.limitReached ||
+    (typeof remaining === 'number' && remaining <= 10)
+  ) {
+    return 'needsAction';
+  }
+  if (typeof remaining === 'number' && remaining <= 20) return 'low';
+  return 'normal';
+};
+
+const recoveryBucketKey = (account: CodexQuotaAccount) => {
+  const resetAt = sortTime(account.currentResetAt);
+  if (resetAt === Number.MAX_SAFE_INTEGER) return 'unknown';
+  const now = Date.now();
+  const oneHour = 60 * 60 * 1000;
+  const oneDay = 24 * oneHour;
+  if (resetAt <= now + oneHour) return 'hour';
+  if (resetAt <= now + oneDay) return 'today';
+  if (resetAt <= now + 2 * oneDay) return 'tomorrow';
+  if (resetAt > now + 3 * oneDay) return 'later';
+  return 'soon';
+};
+
+const previewAccountNames = (accounts: CodexQuotaAccount[]) =>
+  accounts
+    .slice(0, 8)
+    .map((account) => account.account)
+    .join('、');
 
 export function CodexQuotaDashboardPage() {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
@@ -150,6 +201,48 @@ export function CodexQuotaDashboardPage() {
     });
   }, [data?.accounts, planFilter, search, sortMode, statusFilter]);
 
+  const groupedVisibleAccounts = useMemo(() => {
+    const groups: Array<{
+      key: RiskGroupKey;
+      title: string;
+      description: string;
+      accounts: CodexQuotaAccount[];
+    }> = [
+      { key: 'needsAction', title: '需要处理', description: '受限、失败、Token异常或剩余不超过 10%', accounts: [] },
+      { key: 'low', title: '低余量观察', description: '剩余额度 11%-20%，建议减少分配', accounts: [] },
+      { key: 'normal', title: '正常可用', description: '适合优先承接任务', accounts: [] },
+      { key: 'disabled', title: '已停用', description: '不会进入调用池', accounts: [] },
+    ];
+    const groupMap = new Map(groups.map((group) => [group.key, group]));
+    visibleAccounts.forEach((account) => {
+      groupMap.get(riskGroupKey(account))?.accounts.push(account);
+    });
+    return groups.filter((group) => group.accounts.length > 0);
+  }, [visibleAccounts]);
+
+  const recoverySummary = useMemo(() => {
+    const initial = { hour: 0, today: 0, tomorrow: 0, soon: 0, later: 0, unknown: 0 };
+    (data?.accounts ?? []).forEach((account) => {
+      initial[recoveryBucketKey(account)] += 1;
+    });
+    return initial;
+  }, [data?.accounts]);
+
+  const suggestedTargets = useMemo(() => {
+    const accounts = data?.accounts ?? [];
+    return {
+      limited: accounts.filter((account) => !account.disabled && account.status === 'limited'),
+      critical: accounts.filter(
+        (account) =>
+          !account.disabled &&
+          typeof account.currentRemainingPercent === 'number' &&
+          account.currentRemainingPercent <= 10
+      ),
+      disabled: accounts.filter((account) => account.disabled),
+      tokenInvalid: accounts.filter((account) => normalizedErrorReason(account).includes('Token')),
+    };
+  }, [data?.accounts]);
+
   const selectedAccounts = useMemo(() => {
     if (!data || selectedFiles.size === 0) return [];
     return data.accounts.filter((account) => selectedFiles.has(account.file));
@@ -188,18 +281,35 @@ export function CodexQuotaDashboardPage() {
     });
   };
 
-  const handleSetDisabled = async (account: CodexQuotaAccount, nextDisabled: boolean) => {
-    setActionFile(account.file);
+  const executeSetDisabled = async (
+    targets: CodexQuotaAccount[],
+    nextDisabled: boolean,
+    successText: (count: number) => string
+  ) => {
+    if (targets.length === 0) {
+      showNotification(nextDisabled ? '没有需要停用的账号' : '没有需要启用的账号', 'info');
+      return;
+    }
+    setActionFile(targets.length === 1 ? targets[0]?.file ?? '__batch__' : '__batch__');
     try {
-      await codexQuotaApi.setDisabled(account.file, nextDisabled);
-      showNotification(nextDisabled ? '账号已停用' : '账号已启用', 'success');
+      const results = await Promise.allSettled(
+        targets.map((account) => codexQuotaApi.setDisabled(account.file, nextDisabled))
+      );
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      const success = results.length - failed;
+      if (failed > 0) {
+        showNotification(`操作完成：成功 ${success} 个，失败 ${failed} 个`, 'warning');
+      } else {
+        showNotification(successText(success), 'success');
+      }
       await loadQuota();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '账号状态更新失败';
-      showNotification(`账号状态更新失败：${message}`, 'error');
     } finally {
       setActionFile(null);
     }
+  };
+
+  const handleSetDisabled = async (account: CodexQuotaAccount, nextDisabled: boolean) => {
+    await executeSetDisabled([account], nextDisabled, () => (nextDisabled ? '账号已停用' : '账号已启用'));
   };
 
   const handleBatchSetDisabled = async (nextDisabled: boolean) => {
@@ -208,22 +318,11 @@ export function CodexQuotaDashboardPage() {
       showNotification(nextDisabled ? '选中的账号已经是停用状态' : '选中的账号已经是启用状态', 'info');
       return;
     }
-    setActionFile('__batch__');
-    try {
-      const results = await Promise.allSettled(
-        targets.map((account) => codexQuotaApi.setDisabled(account.file, nextDisabled))
-      );
-      const failed = results.filter((result) => result.status === 'rejected').length;
-      const success = results.length - failed;
-      if (failed > 0) {
-        showNotification(`批量操作完成：成功 ${success} 个，失败 ${failed} 个`, 'warning');
-      } else {
-        showNotification(nextDisabled ? `已停用 ${success} 个账号` : `已启用 ${success} 个账号`, 'success');
-      }
-      await loadQuota();
-    } finally {
-      setActionFile(null);
-    }
+    await executeSetDisabled(
+      targets,
+      nextDisabled,
+      (count) => (nextDisabled ? `已停用 ${count} 个账号` : `已启用 ${count} 个账号`)
+    );
   };
 
   const confirmDelete = (account: CodexQuotaAccount) => {
@@ -271,6 +370,67 @@ export function CodexQuotaDashboardPage() {
           } else {
             showNotification(`已归档删除 ${success} 个账号`, 'success');
           }
+          await loadQuota();
+        } finally {
+          setActionFile(null);
+        }
+      },
+    });
+  };
+
+  const confirmSuggestedSetDisabled = (
+    title: string,
+    targets: CodexQuotaAccount[],
+    nextDisabled: boolean,
+    successText: (count: number) => string
+  ) => {
+    if (targets.length === 0) {
+      showNotification('没有符合条件的账号', 'info');
+      return;
+    }
+    showConfirmation({
+      title,
+      message: (
+        <div className={styles.confirmPreview}>
+          <p>将影响 {targets.length} 个账号。</p>
+          <p>{previewAccountNames(targets)}{targets.length > 8 ? ` 等 ${targets.length} 个` : ''}</p>
+        </div>
+      ),
+      confirmText: nextDisabled ? '确认停用' : '确认启用',
+      cancelText: '取消',
+      variant: nextDisabled ? 'danger' : 'primary',
+      onConfirm: () => executeSetDisabled(targets, nextDisabled, successText),
+    });
+  };
+
+  const confirmSuggestedDelete = (targets: CodexQuotaAccount[]) => {
+    if (targets.length === 0) {
+      showNotification('没有符合条件的账号', 'info');
+      return;
+    }
+    showConfirmation({
+      title: '删除 Token 失效账号',
+      message: (
+        <div className={styles.confirmPreview}>
+          <p>将归档删除 {targets.length} 个账号文件。</p>
+          <p>{previewAccountNames(targets)}{targets.length > 8 ? ` 等 ${targets.length} 个` : ''}</p>
+        </div>
+      ),
+      confirmText: '确认删除',
+      cancelText: '取消',
+      variant: 'danger',
+      onConfirm: async () => {
+        setActionFile('__batch__');
+        try {
+          const results = await Promise.allSettled(
+            targets.map((account) => codexQuotaApi.deleteAccount(account.file))
+          );
+          const failed = results.filter((result) => result.status === 'rejected').length;
+          const success = results.length - failed;
+          showNotification(
+            failed > 0 ? `归档删除完成：成功 ${success} 个，失败 ${failed} 个` : `已归档删除 ${success} 个账号`,
+            failed > 0 ? 'warning' : 'success'
+          );
           await loadQuota();
         } finally {
           setActionFile(null);
@@ -370,6 +530,75 @@ export function CodexQuotaDashboardPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+        <div className={styles.panel}>
+          <h2>恢复时间看板</h2>
+          <div className={styles.recoveryGrid}>
+            <div><strong>{recoverySummary.hour}</strong><span>1小时内恢复</span></div>
+            <div><strong>{recoverySummary.today}</strong><span>今天恢复</span></div>
+            <div><strong>{recoverySummary.tomorrow}</strong><span>明天恢复</span></div>
+            <div><strong>{recoverySummary.soon}</strong><span>3天内恢复</span></div>
+            <div><strong>{recoverySummary.later}</strong><span>超过3天</span></div>
+            <div><strong>{recoverySummary.unknown}</strong><span>未知/不适用</span></div>
+          </div>
+        </div>
+        <div className={styles.panel}>
+          <h2>一键建议操作</h2>
+          <div className={styles.quickActions}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={controlsDisabled || suggestedTargets.limited.length === 0}
+              onClick={() =>
+                confirmSuggestedSetDisabled(
+                  '停用所有受限账号',
+                  suggestedTargets.limited,
+                  true,
+                  (count) => `已停用 ${count} 个受限账号`
+                )
+              }
+            >
+              停用受限账号（{suggestedTargets.limited.length}）
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={controlsDisabled || suggestedTargets.critical.length === 0}
+              onClick={() =>
+                confirmSuggestedSetDisabled(
+                  '停用低于 10% 账号',
+                  suggestedTargets.critical,
+                  true,
+                  (count) => `已停用 ${count} 个低余量账号`
+                )
+              }
+            >
+              停用低于10%（{suggestedTargets.critical.length}）
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={controlsDisabled || suggestedTargets.disabled.length === 0}
+              onClick={() =>
+                confirmSuggestedSetDisabled(
+                  '启用已停用账号',
+                  suggestedTargets.disabled,
+                  false,
+                  (count) => `已启用 ${count} 个账号`
+                )
+              }
+            >
+              启用已停用（{suggestedTargets.disabled.length}）
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={controlsDisabled || suggestedTargets.tokenInvalid.length === 0}
+              onClick={() => confirmSuggestedDelete(suggestedTargets.tokenInvalid)}
+            >
+              删除Token失效（{suggestedTargets.tokenInvalid.length}）
+            </Button>
           </div>
         </div>
       </section>
@@ -486,67 +715,76 @@ export function CodexQuotaDashboardPage() {
                   <td colSpan={13} className={styles.emptyCell}>没有匹配的账号</td>
                 </tr>
               ) : (
-                visibleAccounts.map((account) => (
-                  <tr key={account.file}>
-                    <td className={styles.selectColumn}>
-                      <input
-                        type="checkbox"
-                        checked={selectedFiles.has(account.file)}
-                        disabled={controlsDisabled}
-                        aria-label={`选择 ${account.account}`}
-                        onChange={() => toggleSelected(account.file)}
-                      />
+                groupedVisibleAccounts.flatMap((group) => [
+                  <tr className={styles.groupRow} key={`group-${group.key}`}>
+                    <td colSpan={13}>
+                      <strong>{group.title}</strong>
+                      <span>{group.description}</span>
+                      <em>{group.accounts.length} 个</em>
                     </td>
-                    <td>
-                      <div className={styles.accountCell}>
-                        <strong>{account.account}</strong>
-                        <small>{account.file}</small>
-                      </div>
-                    </td>
-                    <td>
-                      <span className={`${styles.statusPill} ${statusClass(account.status)}`}>
-                        {account.statusText}
-                      </span>
-                    </td>
-                    <td>{planLabel(account.plan)}</td>
-                    <td>
-                      <span className={`${styles.remainingPill} ${remainingClass(account)}`}>
-                        {percent(account.currentRemainingPercent)}
-                      </span>
-                    </td>
-                    <td>{percent(account.currentUsedPercent)}</td>
-                    <td>{valueOrDash(account.currentResetAt)}</td>
-                    <td>{valueOrDash(account.longWindowText)}</td>
-                    <td>{percent(account.longRemainingPercent)}</td>
-                    <td>{valueOrDash(account.tokenExpiredAt)}</td>
-                    <td>{valueOrDash(account.lastRefreshAt)}</td>
-                    <td className={styles.errorText} title={account.error}>
-                      {valueOrDash(account.error)}
-                    </td>
-                    <td>
-                      <div className={styles.actions}>
-                        <Button
-                          size="sm"
-                          variant={account.disabled ? 'primary' : 'secondary'}
+                  </tr>,
+                  ...group.accounts.map((account) => (
+                    <tr key={account.file}>
+                      <td className={styles.selectColumn}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFiles.has(account.file)}
                           disabled={controlsDisabled}
-                          loading={actionFile === account.file}
-                          onClick={() => void handleSetDisabled(account, !account.disabled)}
-                        >
-                          {account.disabled ? '启用' : '停用'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={controlsDisabled}
-                          onClick={() => confirmDelete(account)}
-                          title="归档删除"
-                        >
-                          <IconTrash2 size={14} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          aria-label={`选择 ${account.account}`}
+                          onChange={() => toggleSelected(account.file)}
+                        />
+                      </td>
+                      <td>
+                        <div className={styles.accountCell}>
+                          <strong>{account.account}</strong>
+                          <small>{account.file}</small>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`${styles.statusPill} ${statusClass(account.status)}`}>
+                          {account.statusText}
+                        </span>
+                      </td>
+                      <td>{planLabel(account.plan)}</td>
+                      <td>
+                        <span className={`${styles.remainingPill} ${remainingClass(account)}`}>
+                          {percent(account.currentRemainingPercent)}
+                        </span>
+                      </td>
+                      <td>{percent(account.currentUsedPercent)}</td>
+                      <td>{valueOrDash(account.currentResetAt)}</td>
+                      <td>{valueOrDash(account.longWindowText)}</td>
+                      <td>{percent(account.longRemainingPercent)}</td>
+                      <td>{valueOrDash(account.tokenExpiredAt)}</td>
+                      <td>{valueOrDash(account.lastRefreshAt)}</td>
+                      <td className={styles.errorText} title={account.error}>
+                        {normalizedErrorReason(account)}
+                      </td>
+                      <td>
+                        <div className={styles.actions}>
+                          <Button
+                            size="sm"
+                            variant={account.disabled ? 'primary' : 'secondary'}
+                            disabled={controlsDisabled}
+                            loading={actionFile === account.file}
+                            onClick={() => void handleSetDisabled(account, !account.disabled)}
+                          >
+                            {account.disabled ? '启用' : '停用'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            disabled={controlsDisabled}
+                            onClick={() => confirmDelete(account)}
+                            title="归档删除"
+                          >
+                            <IconTrash2 size={14} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )),
+                ])
               )}
             </tbody>
           </table>
