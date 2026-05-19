@@ -107,33 +107,54 @@ remote-management:
 - 任何真实 Management Key
 - 任何真实账号 JSON
 
-## 5. 快速部署
+## 5. 安装部署方式
 
-### 5.1 新建部署目录
+先说结论：
 
-在任意位置新建一个空目录，例如：
+- 想省事，选 **AI 安装**
+- 想自己动手，选 **Docker 安装**
+- 想自己改代码或重新打镜像，选 **源码构建安装**
 
-```bash
-mkdir cpa-manager-codex
-cd cpa-manager-codex
-```
+### 5.1 方式一：让 AI 帮你安装
 
-把以下两个文件放到这个目录中：
+如果你不想自己看命令，可以直接把下面这句话发给 AI：
 
 ```text
-docker-compose.codex-quota.yml
-.env.example
+请帮我在当前电脑上部署 CPA-Manager 的 codex-quota-panel 分支。使用 Docker 方式启动，保留我的账号文件和数据，不要读取、上传或提交 .env、auths、data、SQLite、日志和任何密钥。请根据我的 CLIProxyAPI 地址、Management Key 和 Codex auths 目录完成配置，启动后告诉我访问地址和是否启动成功。
 ```
 
-### 5.2 复制配置文件
+你只需要再准备 3 个信息给 AI：
+
+| 信息             | 说明                             |
+| ---------------- | -------------------------------- |
+| CLIProxyAPI 地址 | 例如 `http://cli-proxy-api:8317` |
+| Management Key   | 你自己的管理密钥                 |
+| auths 目录       | 存放 Codex JSON 文件的本地目录   |
+
+### 5.2 方式二：Docker 安装（推荐）
+
+这是最适合大多数人的方法。你只要照着做，不需要理解代码。
+
+#### 第一步：拉取代码
+
+如果你还没有仓库，可以直接拉取：
+
+```bash
+git clone -b codex-quota-panel https://github.com/yifengai/CPA-Manager.git
+cd CPA-Manager
+```
+
+如果你已经有本地代码目录，直接进入那个目录就行。
+
+#### 第二步：准备配置文件
+
+复制一份配置文件：
 
 ```bash
 cp .env.example .env
 ```
 
-### 5.3 编辑 `.env`
-
-至少修改这三项：
+打开 `.env`，至少改这 3 项：
 
 ```env
 CPA_MANAGEMENT_KEY=your-own-management-key
@@ -154,15 +175,15 @@ CPA_UPSTREAM_URL=http://cli-proxy-api:8317
 | `CODEX_QUOTA_ESTIMATE_COST_USD` | 否   | 单账号周期估算价值，默认按 GPT-5.5 输入价格 $5 / 1M tokens 估算 |
 | `CODEX_QUOTA_ESTIMATE_CALLS`    | 否   | 单账号周期估算调用次数                                          |
 
-### 5.4 选择 CLIProxyAPI 地址
+#### 第三步：选对 CLIProxyAPI 地址
 
-如果 CPA-Manager 和 CLIProxyAPI 在同一个 Docker 网络中，常见写法是：
+如果 CPA-Manager 和 CLIProxyAPI 在同一个 Docker 网络中：
 
 ```env
 CPA_UPSTREAM_URL=http://cli-proxy-api:8317
 ```
 
-如果 CLIProxyAPI 跑在 Docker Desktop 宿主机上，常见写法是：
+如果 CLIProxyAPI 跑在 Docker Desktop 宿主机上：
 
 ```env
 CPA_UPSTREAM_URL=http://host.docker.internal:8317
@@ -174,13 +195,13 @@ CPA_UPSTREAM_URL=http://host.docker.internal:8317
 CPA_UPSTREAM_URL=http://your-server-ip:8317
 ```
 
-### 5.5 启动
+#### 第四步：启动
 
 ```bash
 docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 ```
 
-### 5.6 打开页面
+#### 第五步：打开页面
 
 默认地址：
 
@@ -189,6 +210,47 @@ http://127.0.0.1:18317/management.html#/codex-quota
 ```
 
 如果部署在服务器上，把 `127.0.0.1` 换成服务器地址。
+
+### 5.3 方式三：源码构建安装
+
+这种方式适合开发者，或者你想自己改页面、改文案、改功能后再打镜像。普通用户不需要看这一节。
+
+你需要先准备：
+
+- Node.js
+- Docker
+- docker compose
+
+执行步骤：
+
+```bash
+git clone -b codex-quota-panel https://github.com/yifengai/CPA-Manager.git
+cd CPA-Manager
+npm install
+npm run build
+docker build -f Dockerfile.usage-service -t cpa-manager:codex-quota-local .
+cp .env.example .env
+```
+
+然后打开 `.env`，把镜像改成本地镜像：
+
+```env
+CPA_MANAGER_IMAGE=cpa-manager:codex-quota-local
+```
+
+再按 Docker 安装方式填写 `CPA_MANAGEMENT_KEY`、`CPA_CODEX_AUTH_PATH`、`CPA_UPSTREAM_URL`，最后启动：
+
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
+```
+
+### 5.4 这几种方式怎么选
+
+| 方式        | 适合谁                         | 难度 |
+| ----------- | ------------------------------ | ---- |
+| AI 安装     | 完全不想自己看命令的人         | 低   |
+| Docker 安装 | 想自己照着做，但不想改代码的人 | 低   |
+| 源码构建    | 想自己改代码或重新打镜像的人   | 高   |
 
 ## 6. 登录与首次连接
 
