@@ -77,6 +77,14 @@ export interface AccountPoolBalanceSettings {
   accountCycleCalls: number;
 }
 
+export interface QuotaCycleProgress {
+  hasData: boolean;
+  usedLabelPercent: number | null;
+  remainingLabelPercent: number | null;
+  usedWidthPercent: number;
+  remainingWidthPercent: number;
+}
+
 const gpt55InputUsdPerMillionTokens = 5;
 const defaultAccountCycleTokens = 4_000_000;
 
@@ -104,6 +112,44 @@ export const defaultAccountPoolBalanceSettings: AccountPoolBalanceSettings = {
   accountCycleTokens: defaultAccountCycleTokens,
   accountCycleCostUsd: (defaultAccountCycleTokens / 1_000_000) * gpt55InputUsdPerMillionTokens,
   accountCycleCalls: 34,
+};
+
+const clampPercentValue = (value?: number | null) =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : null;
+
+export const buildQuotaCycleProgress = (
+  rawUsedPercent?: number | null,
+  rawRemainingPercent?: number | null
+): QuotaCycleProgress => {
+  let usedPercent = clampPercentValue(rawUsedPercent);
+  let remainingPercent = clampPercentValue(rawRemainingPercent);
+
+  if (usedPercent === null && remainingPercent !== null) {
+    usedPercent = 100 - remainingPercent;
+  }
+  if (remainingPercent === null && usedPercent !== null) {
+    remainingPercent = 100 - usedPercent;
+  }
+  if (usedPercent === null || remainingPercent === null) {
+    return {
+      hasData: false,
+      usedLabelPercent: usedPercent,
+      remainingLabelPercent: remainingPercent,
+      usedWidthPercent: 0,
+      remainingWidthPercent: 0,
+    };
+  }
+
+  const total = usedPercent + remainingPercent;
+  const usedWidthPercent = total > 0 ? (usedPercent / total) * 100 : 0;
+
+  return {
+    hasData: true,
+    usedLabelPercent: usedPercent,
+    remainingLabelPercent: remainingPercent,
+    usedWidthPercent,
+    remainingWidthPercent: Math.max(0, 100 - usedWidthPercent),
+  };
 };
 
 export const getAccountSurvivalMs = (importedAt?: string | null, nowMs = Date.now()) => {

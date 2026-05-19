@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CodexQuotaAccount } from '@/services/api';
 import {
   buildAccountPoolBalance,
+  buildQuotaCycleProgress,
   buildPriorityAccounts,
   buildRefreshReport,
   buildTodayUsageSummary,
@@ -44,6 +45,38 @@ const createAccount = (overrides: Partial<CodexQuotaAccount> = {}): CodexQuotaAc
 });
 
 describe('codex quota dashboard state', () => {
+  it('normalizes current cycle progress into used and remaining segments', () => {
+    expect(buildQuotaCycleProgress(35, 65)).toMatchObject({
+      hasData: true,
+      usedLabelPercent: 35,
+      remainingLabelPercent: 65,
+      usedWidthPercent: 35,
+      remainingWidthPercent: 65,
+    });
+
+    expect(buildQuotaCycleProgress(null, 25)).toMatchObject({
+      hasData: true,
+      usedLabelPercent: 75,
+      remainingLabelPercent: 25,
+      usedWidthPercent: 75,
+      remainingWidthPercent: 25,
+    });
+
+    expect(buildQuotaCycleProgress(120, -10)).toMatchObject({
+      hasData: true,
+      usedLabelPercent: 100,
+      remainingLabelPercent: 0,
+      usedWidthPercent: 100,
+      remainingWidthPercent: 0,
+    });
+
+    expect(buildQuotaCycleProgress(null, null)).toMatchObject({
+      hasData: false,
+      usedWidthPercent: 0,
+      remainingWidthPercent: 0,
+    });
+  });
+
   it('estimates account pool balance from a 4M token and GPT-5.5 input price baseline', () => {
     const accounts = [
       createAccount({

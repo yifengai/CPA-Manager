@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
   buildAccountPoolBalance,
+  buildQuotaCycleProgress,
   buildTodayUsageSummary,
   buildTodayRestoredHistory,
   defaultAccountPoolBalanceSettings,
@@ -171,15 +172,6 @@ const sortSurvivalTime = (left: CodexQuotaAccount, right: CodexQuotaAccount, des
   if (rightValue === null) return -1;
   if (leftValue === rightValue) return left.account.localeCompare(right.account);
   return desc ? rightValue - leftValue : leftValue - rightValue;
-};
-
-const remainingClass = (account: CodexQuotaAccount) => {
-  const value = account.currentRemainingPercent;
-  if (account.status === 'limited' || value === 0) return styles.remainingCritical;
-  if (typeof value !== 'number') return styles.remainingUnknown;
-  if (value <= 20) return styles.remainingLow;
-  if (value >= 80) return styles.remainingGood;
-  return styles.remainingNormal;
 };
 
 const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
@@ -1372,6 +1364,10 @@ export function CodexQuotaDashboardPage() {
                 visibleAccounts.map((account) => {
                   const accountDisplay = getAccountListDisplay(account);
                   const restoredRecord = todayRestoredRecords.get(account.file);
+                  const cycleProgress = buildQuotaCycleProgress(
+                    account.currentUsedPercent,
+                    account.currentRemainingPercent
+                  );
                   return (
                     <tr key={account.file}>
                       <td className={styles.selectColumn}>
@@ -1409,23 +1405,35 @@ export function CodexQuotaDashboardPage() {
                         </div>
                       </td>
                       <td>
-                        <div className={styles.metricStack}>
-                          <div className={styles.metricPrimaryRow}>
-                            <span className={`${styles.remainingPill} ${remainingClass(account)}`}>
-                              剩余 {percent(account.currentRemainingPercent)}
+                        <div className={styles.cycleMetric}>
+                          <div className={styles.cycleMetricHeader}>
+                            <span className={styles.cycleUsedLabel}>
+                              已用 {percent(cycleProgress.usedLabelPercent)}
                             </span>
-                            <small>已用 {percent(account.currentUsedPercent)}</small>
+                            <span className={styles.cycleRemainingLabel}>
+                              剩余 {percent(cycleProgress.remainingLabelPercent)}
+                            </span>
                           </div>
-                          <div className={styles.quotaProgressTrack}>
-                            <span
-                              className={styles.quotaProgressBar}
-                              style={{
-                                width:
-                                  typeof account.currentRemainingPercent === 'number'
-                                    ? `${Math.max(0, Math.min(100, account.currentRemainingPercent))}%`
-                                    : '0%',
-                              }}
-                            />
+                          <div
+                            className={styles.cycleProgressTrack}
+                            aria-label={`当前周期已用 ${percent(cycleProgress.usedLabelPercent)}，剩余 ${percent(
+                              cycleProgress.remainingLabelPercent
+                            )}`}
+                          >
+                            {cycleProgress.hasData ? (
+                              <>
+                                <span
+                                  className={styles.cycleUsedBar}
+                                  style={{ width: `${cycleProgress.usedWidthPercent}%` }}
+                                />
+                                <span
+                                  className={styles.cycleRemainingBar}
+                                  style={{ width: `${cycleProgress.remainingWidthPercent}%` }}
+                                />
+                              </>
+                            ) : (
+                              <span className={styles.cycleUnknownBar} />
+                            )}
                           </div>
                         </div>
                       </td>
