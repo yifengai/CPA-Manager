@@ -1,365 +1,391 @@
-# CLI Proxy API Management Center
+# CPA-Manager Codex 余量面板
 
-[中文文档](README_CN.md)
+这是 `codex-quota-panel` 分支的说明首页。打开这个分支时，优先看这份 README 就够了。
 
-A single-file Web UI for **CLI Proxy API (CPA)** plus an optional **Usage Service** for persistent usage analytics.
+本分支基于 CPA-Manager / CPAMC 增强，重点新增了 **Codex 账号余量、重置时间、账号池余量估算、今日消耗、账号启停、失败记录清理** 等功能。它不包含 CLIProxyAPI 本体，需要你已经部署好 CLIProxyAPI。
 
-Since v6.10.0, CPA no longer includes built-in usage statistics. This project now supports usage analytics through a long-running Usage Service that consumes the CPA usage queue, persists request events to SQLite, and exposes panel-compatible usage APIs.
+![Codex 余量页面总览](img/codex-quota-dashboard-overview-20260519.png)
 
-- **CPA Main project**: https://github.com/router-for-me/CLIProxyAPI
-- **Recommended CPA version**: >= v6.10.8
+截图只替换了账号邮箱；账号池余量看板、筛选数量、今日消耗和其它状态信息保留页面原样。
 
-## Panel Preview
+## 适合谁
 
-![Account overview table mode showing compact rows, expanded quota details, token structure, and model usage](img/screenshot-20260511-203755.png)
-![Account overview card mode showing health metrics, token usage, Codex quota, and model Top 2 details](img/screenshot-20260511-203905.png)
-![Account overview card grid showing multiple account health and token usage summaries](img/screenshot-20260511-203945.png)
-![Realtime monitoring table showing request status, latency, token usage, and cost](img/screenshot-20260509-105807.png)
-![Codex account inspection progress with live probe logs and cleanup recommendations](img/screenshot-20260509-113713.png)
+适合你：
 
-## What This Provides
+- 已经部署了 CLIProxyAPI
+- 有一批 Codex 账号 JSON 文件
+- 想直观看每个账号的余量、重置时间、是否受限
+- 想在页面里启用、停用、删除、批量操作账号
+- 想把 Docker 面板分享给其他用户，但不暴露自己的账号和密钥
 
-- A single-file React management panel for CPA Management API (`/v0/management`)
-- A Dockerized Usage Service for SQLite-backed usage persistence
-- Native `amd64` and `arm64` packages for Windows, macOS, and Linux with the panel embedded
-- Two deployment modes:
-  - **Full Docker mode**: open the built-in panel from Usage Service and only enter the CPA URL + Management Key
-  - **CPA panel mode**: keep using CPA's `/management.html`, then configure a separately deployed Usage Service inside the panel
-- Runtime monitoring, account/model/channel breakdowns, model pricing, estimated token cost, imports/exports, auth-file operations, quota views, logs, config editing, and system utilities
+不适合你：
 
-## Choose a Deployment Mode
+- 还没有部署 CLIProxyAPI
+- 想把账号 JSON、数据库、密钥直接打进镜像
+- 想在没有任何登录保护的情况下直接暴露公网
 
-| Mode | Entry URL | What the user configures | Best for |
-|---|---|---|---|
-| Full Docker mode | `http://<host>:18317/management.html` | CPA URL + Management Key on login | New deployments, one entry point, least browser/CORS complexity |
-| CPA panel mode | `http://<cpa-host>:8317/management.html` | Usage Service URL under **Management Center Info -> External Usage Service** | Existing CPA automatic panel loading |
-| Frontend only | Vite dev server or `dist/index.html` | CPA URL, optionally Usage Service URL | Development |
+## 分支说明
 
-Full Docker mode does not bundle CPA itself. CPA still runs as the upstream service; the Docker image provides the Usage Service plus an embedded copy of this management panel.
+| 分支                | 用途                                                |
+| ------------------- | --------------------------------------------------- |
+| `main`              | 跟随原 CPA-Manager / CPAMC 上游代码，不混入定制功能 |
+| `codex-quota-panel` | 维护 Codex 余量面板、Docker 部署和配套使用文档      |
 
-## CPA Prerequisites
+使用前请确认当前分支：
 
-Request statistics require the CPA usage queue:
+```bash
+git checkout codex-quota-panel
+```
 
-- CPA Management must be enabled because the usage queue uses the same availability and Management Key as `/v0/management`.
-- Enable usage publishing in CPA with `usage-statistics-enabled: true`, or through `PUT /usage-statistics-enabled` with `{ "value": true }`.
-- CPA `v6.10.8+` is preferred because it exposes the HTTP usage queue endpoint `/v0/management/usage-queue`, which can pass through regular HTTP reverse proxies.
-- Older CPA versions use the RESP queue protocol. Usage Service falls back to RESP in `auto` mode when the HTTP queue endpoint is unavailable. RESP listens on the CPA API port, usually `8317`, and cannot pass through a regular HTTP reverse proxy.
-- CPA keeps queue items in memory for `redis-usage-queue-retention-seconds`, default `60` seconds and maximum `3600` seconds. Keep Usage Service running continuously.
-- Exactly one Usage Service should consume the same CPA usage queue.
+## 功能概览
 
-## Architecture
+- Codex 账号余量和重置时间
+- 账号池总余量估算
+- 今日消耗 Tokens / 预估花费
+- 账号状态筛选：全部、可调用、受限、异常、未知、启用、停用
+- 余量分布筛选：0%、1-20%、21-50%、51-80%、81-90%、91-100%
+- 重置时间筛选：已重置、今天、明天、2 天后至 7 天后、未知
+- 存活周期筛选：`<1天`、`1-3天`、`3-7天`、`7-14天`、`14天以上`、未知
+- 单账号刷新、启用、停用、归档删除
+- 批量启用、批量停用、批量删除、刷新已选账号
+- 清除失败调用记录
+- Usage 用量统计、调用监控、模型费用估算
+- 保留原 CPA 管理面板中的配置、AI 提供商、认证文件、OAuth、日志、中心信息等功能
 
-### Full Docker Mode
+## 安装部署方式
+
+先说结论：
+
+- 不想自己敲命令：选 **AI 安装**
+- 想照着一步步做：选 **Docker 安装**
+- 想自己改代码或重新打镜像：选 **源码构建安装**
+- 已经装过旧版本：看 **升级方式**
+
+## 方式一：AI 安装
+
+把下面这句话发给 AI：
 
 ```text
-Browser
-  -> Usage Service :18317
-      -> built-in management.html
-      -> /v0/management/usage and /v0/management/model-prices from SQLite
-      -> other /v0/management/* proxied to CPA
-      -> HTTP/RESP consumer -> CPA API port
-      -> SQLite /data/usage.sqlite
+请帮我在当前电脑上部署 CPA-Manager 的 codex-quota-panel 分支。使用 Docker 方式启动，保留我的账号文件和数据，不要读取、上传或提交 .env、auths、data、SQLite、日志和任何密钥。请根据我的 CLIProxyAPI 地址、Management Key 和 Codex auths 目录完成配置，启动后告诉我访问地址和是否启动成功。
 ```
 
-The login page detects that it is hosted by Usage Service. You enter the CPA URL and Management Key. Usage Service validates the CPA Management API, stores the setup in SQLite, starts the collector with the configured mode (`auto` by default: HTTP queue first, RESP fallback), and serves the panel from the same origin.
+你只需要准备 3 个信息：
 
-### CPA Panel Mode
+| 信息             | 示例                           |
+| ---------------- | ------------------------------ |
+| CLIProxyAPI 地址 | `http://cli-proxy-api:8317`    |
+| Management Key   | 你自己的管理密钥               |
+| auths 目录       | 存放 Codex JSON 文件的本地目录 |
+
+## 方式二：Docker 安装（推荐）
+
+这是最适合普通用户的方法。你不需要编译代码。
+
+### 第一步：新建部署目录
+
+```bash
+mkdir cpa-manager-codex
+cd cpa-manager-codex
+```
+
+### 第二步：下载部署文件
+
+```bash
+curl -fsSL -o docker-compose.codex-quota.yml https://raw.githubusercontent.com/yifengai/CPA-Manager/codex-quota-panel/docker-compose.codex-quota.yml
+curl -fsSL -o .env.example https://raw.githubusercontent.com/yifengai/CPA-Manager/codex-quota-panel/.env.example
+cp .env.example .env
+```
+
+如果你的环境不能访问 raw.githubusercontent.com，也可以改用 Git：
+
+```bash
+git clone -b codex-quota-panel https://github.com/yifengai/CPA-Manager.git
+cd CPA-Manager
+cp .env.example .env
+```
+
+### 第三步：修改 `.env`
+
+至少改这 3 项：
+
+```env
+CPA_MANAGEMENT_KEY=your-own-management-key
+CPA_CODEX_AUTH_PATH=/absolute/path/to/your/auths
+CPA_UPSTREAM_URL=http://cli-proxy-api:8317
+```
+
+字段说明：
+
+| 字段                            | 必填 | 说明                                                            |
+| ------------------------------- | ---- | --------------------------------------------------------------- |
+| `CPA_MANAGER_IMAGE`             | 是   | 面板镜像地址，默认 `ghcr.io/yifengai/cpa-manager:codex-quota`   |
+| `CPA_MANAGER_PORT`              | 是   | 面板访问端口，默认 `18317`                                      |
+| `CPA_MANAGEMENT_KEY`            | 是   | CLIProxyAPI Management Key                                      |
+| `CPA_CODEX_AUTH_PATH`           | 是   | 本机 Codex 账号 JSON 文件目录                                   |
+| `CPA_UPSTREAM_URL`              | 是   | 容器内访问 CLIProxyAPI 的地址                                   |
+| `CODEX_QUOTA_ESTIMATE_TOKENS`   | 否   | 单账号周期估算 Tokens，默认 `4000000`                           |
+| `CODEX_QUOTA_ESTIMATE_COST_USD` | 否   | 单账号周期估算价值，默认按 GPT-5.5 输入价格 $5 / 1M tokens 估算 |
+| `CODEX_QUOTA_ESTIMATE_CALLS`    | 否   | 单账号周期估算调用次数                                          |
+
+### 第四步：选对 CLIProxyAPI 地址
+
+如果 CPA-Manager 和 CLIProxyAPI 在同一个 Docker 网络中：
+
+```env
+CPA_UPSTREAM_URL=http://cli-proxy-api:8317
+```
+
+如果 CLIProxyAPI 跑在 Docker Desktop 宿主机上：
+
+```env
+CPA_UPSTREAM_URL=http://host.docker.internal:8317
+```
+
+如果 CLIProxyAPI 跑在另一台机器上：
+
+```env
+CPA_UPSTREAM_URL=http://your-server-ip:8317
+```
+
+### 第五步：启动
+
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
+```
+
+### 第六步：打开页面
+
+本机访问：
 
 ```text
-Browser
-  -> CPA /management.html
-      -> normal CPA Management API calls stay on CPA
-      -> usage calls go to configured Usage Service URL
-
-Usage Service
-  -> HTTP/RESP consumer -> CPA API port
-  -> SQLite /data/usage.sqlite
+http://127.0.0.1:18317/management.html#/codex-quota
 ```
 
-Use this when CPA still auto-downloads and serves the panel. Deploy Usage Service separately, then open **Management Center Info -> External Usage Service**, enable it, enter the Usage Service URL, and save.
+服务器部署时，把 `127.0.0.1` 换成服务器 IP 或域名。
 
-## Quick Start: Full Docker Mode
+## 方式三：源码构建安装
 
-### Docker Hub Image
+这种方式适合开发者，或者你想自己改页面、改文案、改功能后再打镜像。普通用户可以跳过。
+
+需要准备：
+
+- Node.js
+- Docker
+- docker compose
+
+执行：
 
 ```bash
-docker run -d \
-  --name cpa-manager \
-  --restart unless-stopped \
-  -p 18317:18317 \
-  -v cpa-manager-data:/data \
-  seakee/cpa-manager:latest
-```
-
-Open:
-
-```text
-http://<host>:18317/management.html
-```
-
-Enter:
-
-- CPA URL:
-  - Docker Desktop host CPA: `http://host.docker.internal:8317`
-  - Same compose network: `http://cli-proxy-api:8317`
-  - Remote CPA: `https://your-cpa.example.com`
-- Management Key
-
-The published image supports `linux/amd64` and `linux/arm64`. If your image is published under another Docker Hub namespace, replace `seakee/cpa-manager:latest`.
-
-### Native Packages
-
-GitHub Releases also provide native packages with the panel embedded:
-
-- `cpa-manager_<version>_linux_amd64.tar.gz`
-- `cpa-manager_<version>_linux_arm64.tar.gz`
-- `cpa-manager_<version>_darwin_amd64.tar.gz`
-- `cpa-manager_<version>_darwin_arm64.tar.gz`
-- `cpa-manager_<version>_windows_amd64.zip`
-- `cpa-manager_<version>_windows_arm64.zip`
-
-macOS/Linux:
-
-```bash
-tar -xzf cpa-manager_vX.Y.Z_linux_amd64.tar.gz
-cd cpa-manager_vX.Y.Z_linux_amd64
-./cpa-manager
-```
-
-The tar archives preserve execute permissions, so no extra `chmod +x` is normally required after extraction. If macOS blocks the unsigned binary, run `xattr -dr com.apple.quarantine .` in the extracted directory and start it again.
-
-Windows PowerShell:
-
-```powershell
-Expand-Archive .\cpa-manager_vX.Y.Z_windows_amd64.zip -DestinationPath .
-cd .\cpa-manager_vX.Y.Z_windows_amd64
-.\cpa-manager.exe
-```
-
-You can double-click `cpa-manager.exe` on Windows, but PowerShell is recommended because it keeps logs and startup errors visible.
-
-Then open:
-
-```text
-http://<host>:18317/management.html
-```
-
-Native packages do not include CPA itself. Run CPA separately, then enter the CPA URL and Management Key on the login page. Set `USAGE_DATA_DIR` or `USAGE_DB_PATH` only when you want to override the default data location.
-
-On first start, if `USAGE_DATA_DIR` and `USAGE_DB_PATH` are not set, the native package creates `config.json` next to the binary and writes SQLite data to `data/usage.sqlite` in the same directory. The extracted package directory therefore contains both the program and its user data.
-
-### Docker Compose
-
-```yaml
-services:
-  cpa-manager:
-    image: seakee/cpa-manager:latest
-    restart: unless-stopped
-    ports:
-      - "18317:18317"
-    volumes:
-      - cpa-manager-data:/data
-
-volumes:
-  cpa-manager-data:
-```
-
-Start:
-
-```bash
-docker compose up -d
-```
-
-### Linux Host CPA
-
-If CPA runs directly on a Linux host and Usage Service runs in Docker, add a host gateway:
-
-```bash
-docker run -d \
-  --name cpa-manager \
-  --restart unless-stopped \
-  --add-host=host.docker.internal:host-gateway \
-  -p 18317:18317 \
-  -v cpa-manager-data:/data \
-  seakee/cpa-manager:latest
-```
-
-Then enter `http://host.docker.internal:8317` as the CPA URL.
-
-## Quick Start: CPA Panel Mode
-
-1. Start CPA as usual and open:
-
-   ```text
-   http://<cpa-host>:8317/management.html
-   ```
-
-2. Deploy Usage Service:
-
-   ```bash
-   docker run -d \
-     --name cpa-manager \
-     --restart unless-stopped \
-     -p 18317:18317 \
-     -v cpa-manager-data:/data \
-     seakee/cpa-manager:latest
-   ```
-
-3. In the CPA panel, go to:
-
-   ```text
-   Management Center Info -> External Usage Service
-   ```
-
-4. Enable it and enter:
-
-   ```text
-   http://<usage-service-host>:18317
-   ```
-
-5. Click **Save and connect**.
-
-The panel sends the current CPA URL and Management Key to Usage Service. After that, monitoring reads usage data from Usage Service while other management calls continue to use CPA.
-
-## Build Locally
-
-```bash
-docker compose -f docker-compose.usage.yml up --build
-```
-
-This builds the React panel and embeds it into the Go Usage Service binary.
-
-## Usage Service Configuration
-
-Most users can configure CPA URL and Management Key from the panel. Environment variables are useful for automated deployments.
-
-| Variable | Default | Description |
-|---|---:|---|
-| `CPA_MANAGER_CONFIG` | empty | Optional config file path. When empty, native packages use `config.json` next to the binary |
-| `HTTP_ADDR` | `0.0.0.0:18317` | Usage Service HTTP listen address |
-| `USAGE_DB_PATH` | Docker: `/data/usage.sqlite`; native: `./data/usage.sqlite` | SQLite database path |
-| `USAGE_DATA_DIR` | Docker: `/data`; native: `./data` | Base data directory when `USAGE_DB_PATH` is not overridden |
-| `CPA_UPSTREAM_URL` | empty | Optional CPA base URL for unattended startup |
-| `CPA_MANAGEMENT_KEY` | empty | Optional CPA Management Key for unattended startup |
-| `CPA_MANAGEMENT_KEY_FILE` | `/run/secrets/cpa_management_key` | Optional file containing the Management Key |
-| `USAGE_COLLECTOR_MODE` | `auto` | Collection mode: `auto` prefers the HTTP usage queue and falls back to RESP for older CPA; `http` forces HTTP; `resp` forces RESP |
-| `USAGE_RESP_QUEUE` | `usage` | RESP key argument; CPA currently ignores it, leave the default unless upstream changes |
-| `USAGE_RESP_POP_SIDE` | `right` | `right` uses `RPOP`; `left` uses `LPOP` |
-| `USAGE_BATCH_SIZE` | `100` | Maximum queue records per pop |
-| `USAGE_POLL_INTERVAL_MS` | `500` | Idle polling interval |
-| `USAGE_QUERY_LIMIT` | `50000` | Maximum recent events returned through compatible `/usage` |
-| `USAGE_CORS_ORIGINS` | `*` | Allowed browser origins for CPA panel mode |
-| `USAGE_RESP_TLS_SKIP_VERIFY` | `false` | Skip TLS verification for RESP connection |
-| `PANEL_PATH` | empty | Serve a custom `management.html` instead of the embedded one |
-
-Configuration precedence is: environment variables > `config.json` > program defaults. Relative paths in the config file are resolved from the config file directory. The generated default config is:
-
-```json
-{
-  "httpAddr": "0.0.0.0:18317",
-  "dataDir": "./data"
-}
-```
-
-If `CPA_UPSTREAM_URL` and `CPA_MANAGEMENT_KEY` are set, collection starts automatically on boot. Otherwise, use the web panel setup flow.
-
-## Data and Security Notes
-
-- SQLite data is stored under `/data`; mount it to persistent storage.
-- In full Docker mode, CPA URL and Management Key are stored in the SQLite `settings` table so collection can resume after restart.
-- Protect the `/data` volume. It contains usage metadata and the saved Management Key.
-- Usage Service redacts key-like fields before storing raw JSON payload snapshots, but request metadata may still expose models, endpoints, account labels, and token usage.
-- RESP queue consumption is pop-based. Do not run multiple Usage Service consumers against the same CPA instance.
-- If Usage Service is down longer than CPA's queue retention window, that period's usage cannot be recovered without CPA-side persistence.
-
-## Runtime Endpoints
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /health` | Basic health check |
-| `GET /status` | Collector, SQLite, event count, and error status |
-| `GET /usage-service/info` | Allows the frontend to detect full Docker mode |
-| `POST /setup` | Save CPA URL + Management Key and start collection |
-| `GET /v0/management/usage` | Compatible usage payload for the panel |
-| `GET /v0/management/usage/export` | Export usage events as JSONL |
-| `POST /v0/management/usage/import` | Import JSONL usage events or legacy JSON snapshots |
-| `GET /v0/management/model-prices` | Read SQLite-backed model pricing |
-| `PUT /v0/management/model-prices` | Replace saved model pricing |
-| `POST /v0/management/model-prices/sync` | Sync model prices from LiteLLM pricing metadata |
-| `GET /models`, `GET /v1/models` | Proxy model-list requests to CPA after setup |
-| `/v0/management/*` | Proxied to CPA except usage endpoints |
-
-After setup, `/status`, usage, model-pricing, and `/v0/management/*` proxy endpoints require the same Management Key as a Bearer token.
-
-Usage import accepts two file families: JSONL/NDJSON event files exported by Usage Service, and legacy JSON snapshots produced by older CPA `/usage/export`. Legacy JSON can be converted only when `usage.apis.*.models.*.details[]` request details are present. Files that contain only aggregate totals are rejected because request-level monitoring data cannot be reconstructed. Legacy import is a migration/recovery path, not a perfect continuation of newly collected Usage Service data: old files may miss metadata such as `api_key_hash`, channel, request ID, method/path, latency, cache tokens, or failure reason, so account matching, API Key level analysis, and detail accuracy may be lower. Importing legacy files affects totals, trend charts, and account/key breakdowns; use a test or backup database first when accuracy matters.
-
-## Feature Overview
-
-- **Dashboard**: connection state, backend version, quick health summary
-- **Configuration**: visual and source editing for CPA configuration
-- **AI Providers**: Gemini, Codex, Claude, Vertex, OpenAI-compatible providers, and Ampcode
-- **Auth Files**: upload, download, delete, status, OAuth exclusions, model aliases
-- **Quota**: quota views for supported providers
-- **Request Monitoring**: persisted usage KPIs, model/channel/account breakdowns, model pricing, estimated token cost, failure analysis, realtime tables
-- **Codex Account Inspection**: batch probing and cleanup suggestions for Codex auth pools
-- **Logs**: incremental file log reading and filtering
-- **Management Center Info**: model list, version checks, local state tools, external Usage Service configuration
-
-## Development
-
-Frontend:
-
-```bash
+git clone -b codex-quota-panel https://github.com/yifengai/CPA-Manager.git
+cd CPA-Manager
 npm install
-npm run dev
-npm run type-check
-npm run lint
 npm run build
+docker build -f Dockerfile.usage-service -t cpa-manager:codex-quota-local .
+cp .env.example .env
 ```
 
-Usage Service:
+然后打开 `.env`，把镜像改成本地镜像：
+
+```env
+CPA_MANAGER_IMAGE=cpa-manager:codex-quota-local
+```
+
+再按 Docker 安装方式填写 `CPA_MANAGEMENT_KEY`、`CPA_CODEX_AUTH_PATH`、`CPA_UPSTREAM_URL`，最后启动：
 
 ```bash
-cd usage-service
-go test ./...
-go run ./cmd/cpa-manager
+docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 ```
 
-## Build and Release
+## 升级方式
 
-- Vite builds a single-file `dist/index.html`.
-- Tagging `vX.Y.Z` triggers `.github/workflows/release.yml`.
-- The release workflow uploads `dist/management.html`, native packages, and `checksums.txt` to GitHub Releases.
-- Native packages are published for `linux`, `darwin`, and `windows` on both `amd64` and `arm64`, with the management panel embedded.
-- The same workflow builds `Dockerfile.usage-service` and pushes `seakee/cpa-manager`.
-- The Docker image is published for `linux/amd64` and `linux/arm64`.
-- The workflow syncs `README.md` to the Docker Hub overview.
-- Required GitHub secrets:
-  - `DOCKERHUB_USERNAME`
-  - `DOCKERHUB_TOKEN`
+进入你的部署目录后执行：
 
-## Troubleshooting
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env pull
+docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
+```
 
-- **Cannot connect in full Docker mode**: verify the CPA URL from inside the Usage Service container. For host CPA on Linux, use `--add-host=host.docker.internal:host-gateway`.
-- **Monitoring is empty**: enable CPA usage publishing, verify Usage Service `/status`, and confirm only one consumer is running.
-- **`unsupported RESP prefix 'H'`**: upgrade CPA to `v6.10.8+` and keep the default `USAGE_COLLECTOR_MODE=auto` so Usage Service uses the HTTP usage queue first. On older CPA or forced RESP mode, the CPA URL must be a container/host direct address for port `8317`, not a regular HTTP reverse-proxy domain.
-- **401 from Usage Service**: use the same Management Key that was saved during setup.
-- **Docker panel shows stale data**: check `/status` for `lastConsumedAt`, `lastInsertedAt`, and `lastError`.
-- **CPA panel mode has CORS errors**: set `USAGE_CORS_ORIGINS` to the CPA panel origin or keep the default `*` for private deployments.
-- **Data disappears after container rebuild**: mount `/data` to a Docker volume or host directory.
-- **Detailed FAQ**: see [FAQ and Troubleshooting](https://github.com/seakee/CPA-Manager/wiki/CPA-Manager-FAQ-and-Troubleshooting) or the [Chinese FAQ](https://github.com/seakee/CPA-Manager/wiki/CPA%E2%80%90Manager-%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88).
+升级不会自动删除：
 
-## References
+- `/data/usage.sqlite`
+- `/data/deleted-auths`
+- 你挂载的 auths 目录
+- 你的 `.env`
 
-- CLIProxyAPI: https://github.com/router-for-me/CLIProxyAPI
-- Redis usage queue documentation: https://help.router-for.me/management/redis-usage-queue.html
+## 首次使用
 
-## Acknowledgements
+打开页面后，进入【Codex 余量】菜单。
 
-- Thanks to the upstream projects [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) and [Cli-Proxy-API-Management-Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) for the foundation and inspiration.
-- Thanks to the [Linux.do](https://linux.do/) community for project promotion and feedback.
+建议第一次按这个顺序操作：
 
-## License
+1. 确认页面能打开。
+2. 点击【刷新余量】。
+3. 等待账号列表加载完成。
+4. 查看账号池余量看板。
+5. 查看【账号状态】、【余量分布】、【重置时间】、【存活周期】筛选。
+6. 对受限或异常账号执行停用、删除或批量操作。
 
-MIT
+## 页面说明
+
+### 账号池余量看板
+
+用于估算当前账号池还可以承接多少调用。
+
+| 指标                  | 说明                                        |
+| --------------------- | ------------------------------------------- |
+| 可调用账号 / 库存账号 | 根据看板右上角【当前可用池 / 全部库存】切换 |
+| 预估剩余 Tokens       | 根据每个账号剩余百分比估算                  |
+| 预计可调用            | 按 `.env` 里的平均 Tokens/次参数估算        |
+| 等价价值              | 按 `.env` 里的美元价值参数估算              |
+
+默认估算参数：
+
+```env
+CODEX_QUOTA_ESTIMATE_TOKENS=4000000
+CODEX_QUOTA_ESTIMATE_COST_USD=20
+CODEX_QUOTA_ESTIMATE_CALLS=34
+```
+
+默认价值按 GPT-5.5 官方输入价格 $5 / 1M tokens 估算：4M Tokens 约等于 $20。这个值不是官方账号额度，只是本地估算基准。
+
+### 今日消耗
+
+【今日消耗】用于查看北京时间当天的 Usage 统计。数据会在进入页面时自动刷新，并写入浏览器缓存；再次点击【刷新余量】时也会同步更新。
+
+| 指标        | 说明                             |
+| ----------- | -------------------------------- |
+| 总调用      | 今日请求总数                     |
+| 调用成功率  | 成功请求占比，并显示平均响应时间 |
+| 失败总数    | 今日失败调用数                   |
+| 预估花费    | 按模型价格估算的今日成本         |
+| 总 Tokens   | 今日总 Tokens，并显示推理 Tokens |
+| 输入 Tokens | 今日输入 Tokens 和占比           |
+| 输出 Tokens | 今日输出 Tokens 和占比           |
+| 缓存 Tokens | 今日缓存 Tokens 和缓存命中率     |
+
+### 账号状态
+
+![可调用账号列表示例](img/codex-quota-callable-account-list-20260519.png)
+
+| 标签   | 含义                                                               |
+| ------ | ------------------------------------------------------------------ |
+| 全部   | 所有 Codex 账号                                                    |
+| 可调用 | 余量可查、未受限、未出现认证异常的账号                             |
+| 受限   | 当前周期触发限制、余量为 0、`allowed=false` 或 `limitReached=true` |
+| 异常   | Token 失效、登录凭证无效、认证失败等明确不可用状态                 |
+| 未知   | 查询超时、数据不完整或暂时无法判断                                 |
+| 启用   | 当前没有被标记为 disabled                                          |
+| 停用   | 已停用，不进入调用池                                               |
+
+停用账号仍然可以查询余量和重置时间，但不会进入调用池。
+
+### 账号列表操作
+
+![账号列表与批量操作](img/codex-quota-account-list-20260519.png)
+
+账号列表支持：
+
+| 操作     | 说明                                      |
+| -------- | ----------------------------------------- |
+| 刷新     | 只刷新当前账号                            |
+| 启用     | 将账号 JSON 中的 `disabled` 改为 `false`  |
+| 停用     | 将账号 JSON 中的 `disabled` 改为 `true`   |
+| 删除     | 将账号文件移动到 `deleted-auths` 归档目录 |
+| 批量启用 | 对已选账号批量启用                        |
+| 批量停用 | 对已选账号批量停用                        |
+| 批量删除 | 对已选账号批量归档删除                    |
+| 刷新已选 | 只刷新勾选账号                            |
+
+删除不是直接永久删除，而是归档到：
+
+```text
+/data/deleted-auths/<时间戳>/
+```
+
+## 隐私和安全
+
+分享给别人前必须确认不要分享这些内容：
+
+- `.env`
+- `auths/`
+- `data/`
+- `reports/`
+- `deleted-auths/`
+- `*.sqlite`
+- 日志文件
+- 任何真实 Management Key
+- 任何真实账号 JSON
+
+本项目的 `.dockerignore` 已默认排除这些敏感文件。截图发布前也要确保邮箱、密钥、token、真实路径已经脱敏。
+
+## 常见问题
+
+### 页面打不开
+
+先检查容器是否启动：
+
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env ps
+```
+
+再查看日志：
+
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env logs -f
+```
+
+### 登录提示未授权
+
+检查 `.env` 中的 `CPA_MANAGEMENT_KEY` 是否和 CLIProxyAPI 的 Management Key 一致。
+
+### 打开页面后没有账号
+
+检查：
+
+1. `CPA_CODEX_AUTH_PATH` 是否指向真实目录。
+2. 目录里是否有 `.json` 文件。
+3. JSON 文件中 `type` 是否为 `codex`。
+4. Docker 是否有权限读取该目录。
+
+### 刷新余量失败
+
+检查：
+
+1. 账号 JSON 是否包含可用 token。
+2. 当前网络是否能访问 ChatGPT / Codex 相关接口。
+3. 账号是否需要重新登录。
+4. 容器时间是否正常。
+
+### 调用监控没有数据
+
+检查：
+
+1. CLIProxyAPI 是否开启 `usage-statistics-enabled: true`。
+2. `CPA_UPSTREAM_URL` 是否正确。
+3. CPA-Manager 是否能访问 CLIProxyAPI。
+4. 是否只有启动 CPA-Manager 之后的新调用才进入数据库。
+
+## 更多文档
+
+更完整的部署、备份、恢复和分享说明见：
+
+[docs/codex-quota-docker.md](docs/codex-quota-docker.md)
+
+## 推荐分享话术
+
+你可以把下面这段发给其他用户：
+
+```text
+这是一个 CLIProxyAPI 的 Docker 管理面板，重点增强了 Codex 账号余量、重置时间、账号池估算、今日消耗和失败记录清理。
+
+使用前需要准备：
+1. 已运行的 CLIProxyAPI
+2. CLIProxyAPI Management Key
+3. Codex auth JSON 文件目录
+4. Docker
+
+按 README 选择 AI 安装或 Docker 安装，启动后打开：
+http://127.0.0.1:18317/management.html#/codex-quota
+
+注意：不要把 .env、auths、data、SQLite、日志文件发给别人。
+```
