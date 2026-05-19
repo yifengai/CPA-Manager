@@ -63,6 +63,97 @@ export interface UsageExportResponse {
   filename: string;
 }
 
+export interface RequestLogSummary {
+  requestId: string;
+  logName: string;
+  logPath: string;
+  updatedAt: string;
+  method: string;
+  path: string;
+  upstreamUrl: string;
+  auth: string;
+  status: string;
+  completed: boolean;
+  hasError: boolean;
+  userCount: number;
+  upstreamEvents: number;
+  responsesEvents: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  userPath: string;
+  userPreview: string;
+  finalPreview: string;
+}
+
+export interface RequestLogTask {
+  id: string;
+  title: string;
+  updatedAt: string;
+  requestCount: number;
+  requests: RequestLogSummary[];
+}
+
+export interface RequestLogListResponse {
+  generatedAt: string;
+  logDir: string;
+  total: number;
+  tasks: RequestLogTask[];
+  latest?: RequestLogSummary;
+}
+
+export interface RequestLogMessage {
+  index: number;
+  path: string;
+  text: string;
+  preview: string;
+  chars: number;
+  current: boolean;
+}
+
+export interface RequestLogRouting {
+  title: string;
+  method: string;
+  upstreamUrl: string;
+  auth: string;
+  body?: string;
+  meta?: Record<string, string>;
+}
+
+export interface RequestLogEvent {
+  event: string;
+  type: string;
+  summary: string;
+  rawData: string;
+  data?: unknown;
+}
+
+export interface RequestLogCount {
+  name: string;
+  count: number;
+}
+
+export interface RequestLogSection {
+  title: string;
+  content: string;
+}
+
+export interface RequestLogTrace {
+  summary: RequestLogSummary;
+  requestInfo: Record<string, string>;
+  headers: Record<string, string>;
+  requestRaw: string;
+  requestJson?: unknown;
+  userMessages: RequestLogMessage[];
+  routing: RequestLogRouting[];
+  upstreamEvents: RequestLogEvent[];
+  responsesEvents: RequestLogEvent[];
+  upstreamEventCounts: RequestLogCount[];
+  responsesEventCounts: RequestLogCount[];
+  finalText: string;
+  sections?: RequestLogSection[];
+}
+
 const USAGE_SERVICE_TIMEOUT_MS = 15 * 1000;
 const USAGE_SERVICE_TRANSFER_TIMEOUT_MS = 60 * 1000;
 export const USAGE_SERVICE_ID = 'cpa-manager';
@@ -141,10 +232,7 @@ export const usageServiceApi = {
     return response.data;
   },
 
-  getModelPrices: async (
-    base: string,
-    managementKey?: string
-  ): Promise<ModelPricesResponse> => {
+  getModelPrices: async (base: string, managementKey?: string): Promise<ModelPricesResponse> => {
     const response = await axios.get<ModelPricesResponse>(
       buildUrl(base, '/v0/management/model-prices'),
       {
@@ -187,10 +275,7 @@ export const usageServiceApi = {
     return response.data;
   },
 
-  exportUsage: async (
-    base: string,
-    managementKey?: string
-  ): Promise<UsageExportResponse> => {
+  exportUsage: async (base: string, managementKey?: string): Promise<UsageExportResponse> => {
     const response = await axios.get<Blob>(buildUrl(base, '/v0/management/usage/export'), {
       timeout: USAGE_SERVICE_TRANSFER_TIMEOUT_MS,
       headers: authHeaders(managementKey),
@@ -213,6 +298,50 @@ export const usageServiceApi = {
       payload,
       {
         timeout: USAGE_SERVICE_TRANSFER_TIMEOUT_MS,
+        headers: authHeaders(managementKey),
+      }
+    );
+    return response.data;
+  },
+
+  getRequestLogs: async (
+    base: string,
+    managementKey?: string,
+    limit = 120
+  ): Promise<RequestLogListResponse> => {
+    const response = await axios.get<RequestLogListResponse>(
+      buildUrl(
+        base,
+        `/v0/management/request-logs/tasks?limit=${encodeURIComponent(String(limit))}`
+      ),
+      {
+        timeout: USAGE_SERVICE_TIMEOUT_MS,
+        headers: authHeaders(managementKey),
+      }
+    );
+    return response.data;
+  },
+
+  getLatestRequestLog: async (base: string, managementKey?: string): Promise<RequestLogTrace> => {
+    const response = await axios.get<RequestLogTrace>(
+      buildUrl(base, '/v0/management/request-logs/latest'),
+      {
+        timeout: USAGE_SERVICE_TIMEOUT_MS,
+        headers: authHeaders(managementKey),
+      }
+    );
+    return response.data;
+  },
+
+  getRequestLogDetail: async (
+    base: string,
+    requestId: string,
+    managementKey?: string
+  ): Promise<RequestLogTrace> => {
+    const response = await axios.get<RequestLogTrace>(
+      buildUrl(base, `/v0/management/request-logs/${encodeURIComponent(requestId)}`),
+      {
+        timeout: USAGE_SERVICE_TIMEOUT_MS,
         headers: authHeaders(managementKey),
       }
     );

@@ -122,6 +122,7 @@
     "oauth": "OAuth Login",
     "quota_management": "Quota Management",
     "monitoring_center": "Request Monitoring",
+    "request_logs": "Request Logs",
     "config_management": "Config Panel",
     "logs": "Logs Viewer",
     "system_info": "Management Center Info"

@@ -57,6 +57,7 @@ func TestLoadReadsConfigAndResolvesRelativePaths(t *testing.T) {
   "pollIntervalMs": 250,
   "queryLimit": 900,
   "panelPath": "panel.html",
+  "requestLogDir": "request-logs",
   "corsOrigins": ["http://panel.local"],
   "tlsSkipVerify": true
 }`), 0o644); err != nil {
@@ -89,6 +90,9 @@ func TestLoadReadsConfigAndResolvesRelativePaths(t *testing.T) {
 	if want := filepath.Join(dir, "panel.html"); cfg.PanelPath != want {
 		t.Fatalf("PanelPath = %q, want %q", cfg.PanelPath, want)
 	}
+	if want := filepath.Join(dir, "request-logs"); cfg.RequestLogDir != want {
+		t.Fatalf("RequestLogDir = %q, want %q", cfg.RequestLogDir, want)
+	}
 	if len(cfg.CORSOrigins) != 1 || cfg.CORSOrigins[0] != "http://panel.local" {
 		t.Fatalf("CORSOrigins = %#v", cfg.CORSOrigins)
 	}
@@ -113,6 +117,7 @@ func TestLoadEnvOverridesConfig(t *testing.T) {
 	t.Setenv("HTTP_ADDR", "127.0.0.1:19001")
 	t.Setenv("USAGE_DATA_DIR", filepath.Join(dir, "env-data"))
 	t.Setenv("CPA_MANAGEMENT_KEY", "env-secret")
+	t.Setenv("CPA_REQUEST_LOG_DIR", filepath.Join(dir, "env-request-logs"))
 	t.Setenv("USAGE_BATCH_SIZE", "12")
 
 	cfg, err := Load()
@@ -127,6 +132,9 @@ func TestLoadEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.ManagementKey != "env-secret" {
 		t.Fatalf("ManagementKey = %q", cfg.ManagementKey)
+	}
+	if want := filepath.Join(dir, "env-request-logs"); cfg.RequestLogDir != want {
+		t.Fatalf("RequestLogDir = %q, want %q", cfg.RequestLogDir, want)
 	}
 	if cfg.BatchSize != 12 {
 		t.Fatalf("BatchSize = %d", cfg.BatchSize)
@@ -174,6 +182,7 @@ func clearConfigEnv(t *testing.T) {
 		"CPA_UPSTREAM_URL",
 		"CPA_MANAGEMENT_KEY",
 		"CPA_MANAGEMENT_KEY_FILE",
+		"CPA_REQUEST_LOG_DIR",
 		"USAGE_COLLECTOR_MODE",
 		"USAGE_RESP_QUEUE",
 		"USAGE_RESP_POP_SIDE",

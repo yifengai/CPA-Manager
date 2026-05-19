@@ -20,6 +20,7 @@ type Config struct {
 	HTTPAddr                  string
 	DBPath                    string
 	DataDir                   string
+	RequestLogDir             string
 	CPAUpstreamURL            string
 	ManagementKey             string
 	CollectorMode             string
@@ -42,6 +43,7 @@ type fileConfig struct {
 	HTTPAddr                  string   `json:"httpAddr,omitempty"`
 	DataDir                   string   `json:"dataDir,omitempty"`
 	DBPath                    string   `json:"dbPath,omitempty"`
+	RequestLogDir             string   `json:"requestLogDir,omitempty"`
 	CPAUpstreamURL            string   `json:"cpaUpstreamUrl,omitempty"`
 	ManagementKeyFile         string   `json:"managementKeyFile,omitempty"`
 	CollectorMode             string   `json:"collectorMode,omitempty"`
@@ -79,6 +81,11 @@ func Load() (Config, error) {
 		dbPathFallback = resolveConfigPath(cfgFile.DBPath, cfgDir)
 	}
 
+	requestLogDirFallback := filepath.Join(dataDir, "request-logs")
+	if cfgFile.RequestLogDir != "" && !hasEnv("CPA_REQUEST_LOG_DIR") {
+		requestLogDirFallback = resolveConfigPath(cfgFile.RequestLogDir, cfgDir)
+	}
+
 	managementKeyFile := defaultSecretFile
 	if cfgFile.ManagementKeyFile != "" {
 		managementKeyFile = resolveConfigPath(cfgFile.ManagementKeyFile, cfgDir)
@@ -88,6 +95,7 @@ func Load() (Config, error) {
 		HTTPAddr:                  env("HTTP_ADDR", stringFallback(cfgFile.HTTPAddr, "0.0.0.0:18317")),
 		DBPath:                    env("USAGE_DB_PATH", dbPathFallback),
 		DataDir:                   dataDir,
+		RequestLogDir:             env("CPA_REQUEST_LOG_DIR", requestLogDirFallback),
 		CPAUpstreamURL:            env("CPA_UPSTREAM_URL", cfgFile.CPAUpstreamURL),
 		ManagementKey:             readSecret("CPA_MANAGEMENT_KEY", "CPA_MANAGEMENT_KEY_FILE", managementKeyFile),
 		CollectorMode:             normalizeCollectorMode(env("USAGE_COLLECTOR_MODE", stringFallback(cfgFile.CollectorMode, "auto"))),

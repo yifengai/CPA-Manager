@@ -71,144 +71,8 @@
   font-size: 14px;
 }
 
-.healthHero {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(230px, 0.95fr) minmax(230px, 0.85fr) minmax(260px, 1fr) minmax(
-      300px,
-      1.15fr
-    );
-  gap: $spacing-sm;
-  padding: 14px 42px 14px 14px;
-  border: 1px solid color-mix(in srgb, var(--primary-color) 18%, var(--border-color));
-  border-radius: $radius-lg;
-  background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-primary));
-
-  @include tablet {
-    grid-template-columns: 1fr;
-  }
-}
-
-.healthHeroClose {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: inline-flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: $radius-sm;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 22px;
-  line-height: 1;
-  transition:
-    background $transition-fast,
-    border-color $transition-fast,
-    color $transition-fast;
-
-  &:hover {
-    border-color: var(--border-color);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-
-  &:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 18%, transparent);
-  }
-}
-
-.healthHeroMain,
-.healthHeroActions,
-.refreshReport {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-
-  strong {
-    color: var(--text-primary);
-    font-size: 20px;
-    line-height: 1.2;
-  }
-
-  small {
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.45;
-  }
-}
-
-.kicker,
-.refreshReport span,
-.healthHeroMetrics span,
-.summaryCompactCard span,
-.segmentedButtonGrid span,
-.quotaBucketButtons span {
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-.healthHeroMetrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-
-  div {
-    display: grid;
-    min-height: 72px;
-    align-content: center;
-    gap: 6px;
-    padding: 10px;
-    border-radius: $radius-md;
-    background: var(--bg-primary);
-  }
-
-  strong {
-    color: var(--text-primary);
-    font-size: 24px;
-    line-height: 1;
-  }
-}
-
-.healthQuotaDistribution,
-.healthHeroActions {
-  display: grid;
-  min-width: 0;
-  align-content: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: $radius-md;
-  background: var(--bg-primary);
-
-  small {
-    color: var(--text-secondary);
-    font-size: 13px;
-  }
-}
-
-.refreshReport {
-  grid-column: 1 / -1;
-  padding: 10px 12px;
-  border-radius: $radius-md;
-  background: var(--bg-primary);
-
-  strong {
-    font-size: 14px;
-  }
-}
-
 .filterPanel,
 .accountPoolPanel,
-.controlHub,
 .toolbar,
 .tablePanel {
   border: 1px solid color-mix(in srgb, var(--border-color) 86%, transparent);
@@ -529,83 +393,6 @@
   }
 }
 
-.controlHub {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 12px;
-  padding: 12px;
-
-  @include tablet {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  @include mobile {
-    grid-template-columns: 1fr;
-  }
-}
-
-.controlSection {
-  display: grid;
-  min-width: 0;
-  align-content: start;
-  gap: 10px;
-  padding: 12px;
-  border-radius: $radius-md;
-  background: var(--bg-secondary);
-
-  h2 {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 14px;
-  }
-}
-
-.controlSectionHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-
-  button {
-    appearance: none;
-    border: 0;
-    background: transparent;
-    color: var(--primary-color);
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 700;
-  }
-}
-
-.summaryCompactGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-
-  @include mobile {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.summaryCompactCard,
-.segmentedButtonGrid button,
-.quotaBucketButtons button,
-.filterButtonGroup button {
-  appearance: none;
-  min-width: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: var(--bg-primary);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-  transition:
-    border-color $transition-fast,
-    background $transition-fast,
-    box-shadow $transition-fast;
-}
-
 .filterButtonGroup {
   display: flex;
   min-width: 0;
@@ -620,14 +407,29 @@
   }
 
   button {
+    appearance: none;
     display: inline-flex;
     flex: 0 0 auto;
     min-height: 27px;
     align-items: center;
     gap: 5px;
     padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-primary);
+    cursor: pointer;
+    font: inherit;
     text-align: center;
+    transition:
+      border-color $transition-fast,
+      background $transition-fast,
+      box-shadow $transition-fast;
     white-space: nowrap;
+
+    &:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 44%, var(--border-color));
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.055);
+    }
   }
 
   span {
@@ -648,117 +450,11 @@
   }
 }
 
-.summaryCompactCard {
-  min-height: 70px;
-  padding: 10px 12px;
-
-  span,
-  strong,
-  small {
-    display: block;
-  }
-
-  strong {
-    margin-top: 6px;
-    color: var(--text-primary);
-    font-size: 22px;
-    line-height: 1;
-  }
-
-  small {
-    margin-top: 6px;
-    color: var(--text-secondary);
-    font-size: 12px;
-  }
-}
-
-.segmentedButtonGrid {
-  display: flex;
-  align-items: stretch;
-  flex-wrap: wrap;
-  gap: 8px;
-
-  button {
-    display: flex;
-    flex: 1 1 128px;
-    min-height: 40px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 10px;
-  }
-
-  strong {
-    min-width: 26px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    font-size: 12px;
-    text-align: center;
-  }
-}
-
-.summaryCompactCard:hover,
-.segmentedButtonGrid button:hover,
-.quotaBucketButtons button:hover,
-.filterButtonGroup button:hover {
-  border-color: color-mix(in srgb, var(--primary-color) 44%, var(--border-color));
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.055);
-}
-
-.quotaBucketButtons {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-
-  button {
-    display: grid;
-    min-width: 68px;
-    min-height: 50px;
-    align-content: center;
-    gap: 5px;
-    padding: 8px;
-    text-align: center;
-  }
-
-  strong {
-    color: var(--text-primary);
-    font-size: 16px;
-    line-height: 1;
-  }
-}
-
 .activeControlButton {
   border-color: var(--primary-color) !important;
   background: color-mix(in srgb, var(--primary-color) 9%, var(--bg-primary)) !important;
   color: var(--primary-color) !important;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 24%, transparent);
-}
-
-.quickActions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-
-  :global(.btn) {
-    width: 100%;
-    min-height: 38px;
-    justify-content: center;
-    white-space: normal;
-  }
-
-  :global(.btn > span) {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    line-height: 1.25;
-  }
-
-  @include mobile {
-    grid-template-columns: 1fr;
-  }
 }
 
 .toolbar {
@@ -878,45 +574,6 @@
   background: color-mix(in srgb, var(--bg-secondary) 45%, transparent);
 }
 
-.groupRow {
-  td {
-    position: sticky;
-    top: 43px;
-    z-index: 1;
-    background: color-mix(in srgb, var(--bg-secondary) 78%, var(--bg-primary));
-    color: var(--text-secondary);
-  }
-
-  strong,
-  span,
-  em {
-    display: inline-flex;
-    align-items: center;
-    margin-right: $spacing-sm;
-    font-style: normal;
-    line-height: 1.4;
-  }
-
-  strong {
-    color: var(--text-primary);
-    font-size: 13px;
-  }
-
-  span {
-    white-space: normal;
-  }
-
-  em {
-    min-height: 22px;
-    padding: 0 8px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    color: var(--primary-color);
-    font-size: 12px;
-    font-weight: 700;
-  }
-}
-
 .selectColumn {
   width: 44px;
   min-width: 44px;
@@ -955,8 +612,7 @@
 }
 
 .accountTitleRow,
-.accountMetaRow,
-.metricPrimaryRow {
+.accountMetaRow {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -1023,22 +679,6 @@
   }
 }
 
-.quotaProgressTrack {
-  width: min(220px, 100%);
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--bg-secondary);
-}
-
-.quotaProgressBar {
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  border-radius: inherit;
-  background: var(--success-color);
-}
-
 .cycleMetric {
   display: grid;
   width: min(168px, 100%);
@@ -1102,10 +742,7 @@
 }
 
 .accountSwitchPill,
-.businessPill,
-.remainingPill,
-.healthPill,
-.statusPill {
+.businessPill {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -1145,46 +782,6 @@
 .business_unknown {
   background: rgba($warning-color, 0.14);
   color: var(--warning-color);
-}
-
-.statusAvailable,
-.remainingGood,
-.health_good {
-  background: rgba($success-color, 0.12);
-  color: var(--success-color);
-}
-
-.statusLimited,
-.remainingCritical,
-.health_danger {
-  background: rgba($error-color, 0.12);
-  color: var(--danger-color);
-}
-
-.statusDisabled,
-.remainingUnknown,
-.health_disabled {
-  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
-  color: var(--text-secondary);
-}
-
-.statusError,
-.remainingLow,
-.health_watch {
-  background: rgba($warning-color, 0.14);
-  color: var(--warning-color);
-}
-
-.remainingNormal {
-  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-  color: var(--primary-color);
-}
-
-.errorText {
-  max-width: 320px;
-  overflow: hidden;
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
 }
 
 .actions {

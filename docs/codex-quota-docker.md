@@ -1,6 +1,6 @@
-# Codex 余量面板部署与使用手册
+# Codex 余量与请求日志面板部署使用手册
 
-本文档面向想直接使用 Docker 部署的用户。你不需要编译代码，只需要准备好已经运行的 CLIProxyAPI、Codex 账号文件目录和 Docker。
+本文档面向想直接使用 Docker 部署的用户。你不需要编译代码，只需要准备好已经运行的 CLIProxyAPI、Codex 账号文件目录、CLIProxyAPI logs 目录和 Docker。
 
 部署后可以在浏览器中查看：
 
@@ -10,12 +10,13 @@
 - 账号启用、停用、删除
 - 批量刷新、刷新已选账号
 - 清除失败调用记录
+- 请求日志分析：按任务查看请求体、账号分发、Responses SSE、上游 SSE 和原始请求
 - Usage 用量统计、调用监控、模型费用估算
 - 原 CPA 管理面板中的配置、AI 提供商、认证文件、OAuth、日志、系统信息等功能
 
 ## 0. 分支说明
 
-本文档只适用于 `codex-quota-panel` 分支。这个分支用于维护 Codex 账号余量、账号池估算、今日消耗、失败记录清理和相关 Docker 部署能力。
+本文档适用于 `request-log-page` 分支。这个分支在 Codex 余量面板基础上，增加请求日志页面、日志目录挂载和配套使用说明。
 
 建议按下面的分支边界使用：
 
@@ -23,11 +24,12 @@
 | ------------------- | ---------------------------------------------------- |
 | `main`              | 跟随原 CPA-Manager / CPAMC 上游代码，不混入定制功能  |
 | `codex-quota-panel` | 只维护 Codex 余量面板、Docker 分享部署和配套使用文档 |
+| `request-log-page`  | 增加请求日志页面，并保留 Codex 余量面板能力          |
 
 如果你是从 GitHub 获取代码，请确认当前分支是：
 
 ```bash
-git checkout codex-quota-panel
+git checkout request-log-page
 ```
 
 ## 1. 适合谁使用
@@ -37,8 +39,9 @@ git checkout codex-quota-panel
 1. 已经在本地或服务器部署了 CLIProxyAPI。
 2. 有一批 Codex 账号 JSON 文件。
 3. 希望直观看到每个账号的剩余额度、重置时间、是否受限。
-4. 希望用 Docker 一键启动管理面板。
-5. 希望把面板分享给其他用户，但不暴露自己的账号、密钥、数据库和本地路径。
+4. 希望按任务查看 CLIProxyAPI 收到的请求、选择的账号、SSE 流和 Responses 返回。
+5. 希望用 Docker 一键启动管理面板。
+6. 希望把面板分享给其他用户，但不暴露自己的账号、密钥、数据库和本地路径。
 
 不适合以下场景：
 
@@ -54,6 +57,7 @@ git checkout codex-quota-panel
       -> 内置管理页面
       -> 读取 /data/usage.sqlite
       -> 读取 /auths 下的 Codex 账号文件
+      -> 只读挂载 /request-logs 下的 CLIProxyAPI request-log 文件
       -> 代理访问 CLIProxyAPI Management API
 
 CLIProxyAPI
@@ -68,18 +72,20 @@ CLIProxyAPI
 
 你需要准备：
 
-| 项目             | 说明                               |
-| ---------------- | ---------------------------------- |
-| CLIProxyAPI      | 已经启动，并且 Management API 可用 |
-| Management Key   | CLIProxyAPI 的管理密钥             |
-| Codex auths 目录 | 存放 Codex 账号 `.json` 文件的目录 |
-| Docker           | Docker Desktop 或 Docker Engine    |
-| docker compose   | Docker Desktop 通常已自带          |
+| 项目             | 说明                                 |
+| ---------------- | ------------------------------------ |
+| CLIProxyAPI      | 已经启动，并且 Management API 可用   |
+| Management Key   | CLIProxyAPI 的管理密钥               |
+| Codex auths 目录 | 存放 Codex 账号 `.json` 文件的目录   |
+| request-log 目录 | CLIProxyAPI 写入请求日志的 logs 目录 |
+| Docker           | Docker Desktop 或 Docker Engine      |
+| docker compose   | Docker Desktop 通常已自带            |
 
 CLIProxyAPI 建议开启：
 
 ```yaml
 usage-statistics-enabled: true
+request-log: true
 remote-management:
   allow-remote: true
 ```
@@ -103,7 +109,7 @@ remote-management:
 - `reports/`
 - `deleted-auths/`
 - `*.sqlite`
-- 日志文件
+- 请求日志文件
 - 任何真实 Management Key
 - 任何真实账号 JSON
 
@@ -120,16 +126,17 @@ remote-management:
 如果你不想自己看命令，可以直接把下面这句话发给 AI：
 
 ```text
-请帮我在当前电脑上部署 CPA-Manager 的 codex-quota-panel 分支。使用 Docker 方式启动，保留我的账号文件和数据，不要读取、上传或提交 .env、auths、data、SQLite、日志和任何密钥。请根据我的 CLIProxyAPI 地址、Management Key 和 Codex auths 目录完成配置，启动后告诉我访问地址和是否启动成功。
+请帮我在当前电脑上部署 CPA-Manager 的 request-log-page 分支。使用 Docker 方式启动，保留我的账号文件和数据，不要读取、上传或提交 .env、auths、data、SQLite、请求日志和任何密钥。请根据我的 CLIProxyAPI 地址、Management Key、Codex auths 目录和 CLIProxyAPI logs 目录完成配置，启动后告诉我访问地址和是否启动成功。
 ```
 
-你只需要再准备 3 个信息给 AI：
+你只需要再准备 4 个信息给 AI：
 
 | 信息             | 说明                             |
 | ---------------- | -------------------------------- |
 | CLIProxyAPI 地址 | 例如 `http://cli-proxy-api:8317` |
 | Management Key   | 你自己的管理密钥                 |
 | auths 目录       | 存放 Codex JSON 文件的本地目录   |
+| logs 目录        | CLIProxyAPI request-log 日志目录 |
 
 ### 5.2 方式二：Docker 安装（推荐）
 
@@ -140,7 +147,7 @@ remote-management:
 如果你还没有仓库，可以直接拉取：
 
 ```bash
-git clone -b codex-quota-panel https://github.com/yifengai/CPA-Manager.git
+git clone -b request-log-page https://github.com/yifengai/CPA-Manager.git
 cd CPA-Manager
 ```
 
@@ -154,11 +161,12 @@ cd CPA-Manager
 cp .env.example .env
 ```
 
-打开 `.env`，至少改这 3 项：
+打开 `.env`，至少改这 4 项：
 
 ```env
 CPA_MANAGEMENT_KEY=your-own-management-key
 CPA_CODEX_AUTH_PATH=/absolute/path/to/your/auths
+CPA_REQUEST_LOG_PATH=/absolute/path/to/CLIProxyAPI-main/logs
 CPA_UPSTREAM_URL=http://cli-proxy-api:8317
 ```
 
@@ -170,6 +178,7 @@ CPA_UPSTREAM_URL=http://cli-proxy-api:8317
 | `CPA_MANAGER_PORT`              | 是   | 面板访问端口，默认 `18317`                                      |
 | `CPA_MANAGEMENT_KEY`            | 是   | CLIProxyAPI Management Key                                      |
 | `CPA_CODEX_AUTH_PATH`           | 是   | 本机 Codex 账号 JSON 文件目录                                   |
+| `CPA_REQUEST_LOG_PATH`          | 否   | CLIProxyAPI request-log 日志目录，不配置时请求日志页面无数据    |
 | `CPA_UPSTREAM_URL`              | 是   | 容器内访问 CLIProxyAPI 的地址                                   |
 | `CODEX_QUOTA_ESTIMATE_TOKENS`   | 否   | 单账号周期估算 Tokens                                           |
 | `CODEX_QUOTA_ESTIMATE_COST_USD` | 否   | 单账号周期估算价值，默认按 GPT-5.5 输入价格 $5 / 1M tokens 估算 |
@@ -224,18 +233,18 @@ http://127.0.0.1:18317/management.html#/codex-quota
 执行步骤：
 
 ```bash
-git clone -b codex-quota-panel https://github.com/yifengai/CPA-Manager.git
+git clone -b request-log-page https://github.com/yifengai/CPA-Manager.git
 cd CPA-Manager
 npm install
 npm run build
-docker build -f Dockerfile.usage-service -t cpa-manager:codex-quota-local .
+docker build -f Dockerfile.usage-service -t cpa-manager:request-log-page-local .
 cp .env.example .env
 ```
 
 然后打开 `.env`，把镜像改成本地镜像：
 
 ```env
-CPA_MANAGER_IMAGE=cpa-manager:codex-quota-local
+CPA_MANAGER_IMAGE=cpa-manager:request-log-page-local
 ```
 
 再按 Docker 安装方式填写 `CPA_MANAGEMENT_KEY`、`CPA_CODEX_AUTH_PATH`、`CPA_UPSTREAM_URL`，最后启动：
@@ -433,7 +442,37 @@ CODEX_QUOTA_ESTIMATE_CALLS=34
 
 这样做的目的是避免受限或异常账号继续参与调用，减少失败请求和无效重试。
 
-## 9. 用量统计和调用监控
+## 9. 请求日志页面
+
+【请求日志】页面用于把 CLIProxyAPI 的 request-log 文件整理成可读视图，适合排查一次用户请求从进入代理到返回客户端的完整过程。
+
+页面分为三栏：
+
+| 区域     | 说明                                                                 |
+| -------- | -------------------------------------------------------------------- |
+| 任务历史 | 按用户任务聚合最近请求，支持搜索任务、请求、账号和返回内容           |
+| 请求列表 | 展示选中任务下的每一次请求，点击后右侧立即切换详情                   |
+| 请求详情 | 展示用户请求、返回内容、分发情况、Responses SSE、上游 SSE 和原始请求 |
+
+缓存规则：
+
+1. 打开【请求日志】页面时，优先显示浏览器缓存里的上一次结果。
+2. 进入页面、切换菜单、切换标签不会自动覆盖当前历史记录。
+3. 点击右上角【刷新】时，会先清除旧缓存，再重新读取 CLIProxyAPI logs 目录。
+4. 刷新成功后，最新任务、当前选中请求和详情会重新写入浏览器缓存。
+5. 如果刷新失败，页面会显示错误提示；你仍可参考当前屏幕中的旧数据，但旧缓存已经按刷新动作清除。
+
+启用步骤：
+
+1. 在 CLIProxyAPI 中开启 request-log。
+2. 确认 CLIProxyAPI 的 logs 目录里能看到 `v1-responses-*.log` 文件。
+3. 在 `.env` 中设置 `CPA_REQUEST_LOG_PATH=/absolute/path/to/CLIProxyAPI-main/logs`。
+4. 重新执行 `docker compose -f docker-compose.codex-quota.yml --env-file .env up -d`。
+5. 打开 `http://127.0.0.1:18317/management.html#/request-logs`。
+
+注意：请求日志通常包含原始提示词、返回内容、工具调用、请求头、本机路径，甚至可能包含第三方客户端传入的敏感字段。不要把 request-log 文件、页面截图或导出的详情直接公开分享。
+
+## 10. 用量统计和调用监控
 
 CPA-Manager 会消费 CLIProxyAPI 的 usage queue，并写入 SQLite。
 
@@ -457,7 +496,7 @@ CPA-Manager 会消费 CLIProxyAPI 的 usage queue，并写入 SQLite。
 3. CLIProxyAPI usage queue 保留时间是否太短。
 4. 面板是否连接到了正确的 CPA 地址。
 
-## 10. 清除失败记录
+## 11. 清除失败记录
 
 在【Codex 余量】页面点击【清除失败记录】后，会删除 Usage SQLite 中标记为失败的调用记录。
 
@@ -474,7 +513,7 @@ CPA-Manager 会消费 CLIProxyAPI 的 usage queue，并写入 SQLite。
 - CLIProxyAPI 配置
 - 原始日志文件
 
-## 11. 升级
+## 12. 升级
 
 进入部署目录后执行：
 
@@ -489,9 +528,9 @@ docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 - `/data/deleted-auths`
 - 你挂载的 auths 目录
 
-## 12. 备份和恢复
+## 13. 备份和恢复
 
-### 12.1 需要备份什么
+### 13.1 需要备份什么
 
 建议备份：
 
@@ -502,15 +541,15 @@ docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 | Codex 账号文件 | `.env` 中的 `CPA_CODEX_AUTH_PATH`                          |
 | 配置文件       | `.env`                                                     |
 
-### 12.2 导出用量
+### 13.2 导出用量
 
 可以在调用监控页面使用导出功能，也可以备份 Docker volume。
 
-### 12.3 恢复账号文件
+### 13.3 恢复账号文件
 
 如果误删账号，可以从 `deleted-auths` 对应时间目录中找回 JSON 文件，再放回 auths 目录。
 
-## 13. 隐私和安全
+## 14. 隐私和安全
 
 分享给别人前必须确认：
 
@@ -539,13 +578,13 @@ deleted-auths/
 *.sqlite-wal
 ```
 
-## 14. 维护者发布镜像
+## 15. 维护者发布镜像
 
 如果你是维护者，需要把镜像发布给其他人使用，可以执行：
 
 ```bash
-docker build -f Dockerfile.usage-service -t ghcr.io/yifengai/cpa-manager:codex-quota .
-docker push ghcr.io/yifengai/cpa-manager:codex-quota
+docker build -f Dockerfile.usage-service -t ghcr.io/yifengai/cpa-manager:request-log-page .
+docker push ghcr.io/yifengai/cpa-manager:request-log-page
 ```
 
 发布前建议检查：
@@ -562,7 +601,7 @@ docker build -f Dockerfile.usage-service -t cpa-manager:privacy-check .
 CPA_MANAGER_IMAGE=your-registry/your-image:your-tag
 ```
 
-## 15. 常见问题
+## 16. 常见问题
 
 ### 页面打不开
 
@@ -609,6 +648,15 @@ docker compose -f docker-compose.codex-quota.yml --env-file .env logs -f
 3. CPA-Manager 是否能访问 CLIProxyAPI。
 4. 是否只有启动 CPA-Manager 之后的新调用才进入数据库。
 
+### 页面能打开，但请求日志没有数据
+
+检查：
+
+1. CLIProxyAPI 是否开启 request-log。
+2. `.env` 中的 `CPA_REQUEST_LOG_PATH` 是否指向 CLIProxyAPI 的真实 logs 目录。
+3. `docker-compose.codex-quota.yml` 是否挂载了 `${CPA_REQUEST_LOG_PATH:-./logs}:/request-logs:ro`。
+4. 开启 request-log 后是否已经产生过新的 `/v1/responses` 请求。
+
 ### Docker Desktop 访问不到宿主机 CLIProxyAPI
 
 把 `.env` 中的地址改成：
@@ -629,18 +677,19 @@ CPA_UPSTREAM_URL=http://host.docker.internal:8317
 docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 ```
 
-## 16. 推荐分享话术
+## 17. 推荐分享话术
 
 你可以把下面这段发给其他用户：
 
 ```text
-这是一个 CLIProxyAPI 的 Docker 管理面板，重点增强了 Codex 账号余量、重置时间、账号池估算和失败记录清理。
+这是一个 CLIProxyAPI 的 Docker 管理面板，重点增强了 Codex 账号余量、重置时间、账号池估算、失败记录清理和请求日志分析。
 
 使用前需要准备：
 1. 已运行的 CLIProxyAPI
 2. CLIProxyAPI Management Key
 3. Codex auth JSON 文件目录
-4. Docker
+4. CLIProxyAPI logs 目录（可选，用于请求日志）
+5. Docker
 
 按文档复制 docker-compose.codex-quota.yml 和 .env.example，改好 .env 后执行：
 
@@ -648,6 +697,8 @@ docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 
 然后打开：
 http://127.0.0.1:18317/management.html#/codex-quota
+请求日志页面：
+http://127.0.0.1:18317/management.html#/request-logs
 
-注意：不要把 .env、auths、data、SQLite、日志文件发给别人。
+注意：不要把 .env、auths、data、SQLite、请求日志文件发给别人。
 ```

@@ -19,6 +19,7 @@ import { QuotaPage } from '@/pages/QuotaPage';
 import { CodexQuotaDashboardPage } from '@/pages/CodexQuotaDashboardPage';
 import { MonitoringCenterPage } from '@/pages/MonitoringCenterPage';
 import { CodexInspectionPage } from '@/pages/CodexInspectionPage';
+import { RequestLogsPage } from '@/pages/RequestLogsPage';
 import { ConfigPage } from '@/pages/ConfigPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { SystemPage } from '@/pages/SystemPage';
@@ -77,6 +78,7 @@ const mainRoutes = [
   { path: '/codex-quota', element: <CodexQuotaDashboardPage /> },
   { path: '/monitoring', element: <MonitoringCenterPage /> },
   { path: '/monitoring/codex-inspection', element: <CodexInspectionPage /> },
+  { path: '/request-logs', element: <RequestLogsPage /> },
   { path: '/config', element: <ConfigPage /> },
   { path: '/logs', element: <LogsPage /> },
   { path: '/system', element: <SystemPage /> },

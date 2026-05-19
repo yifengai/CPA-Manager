@@ -96,6 +96,10 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		s.withCORS(s.handleCodexQuota)(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/v0/management/request-logs") {
+		s.withCORS(s.handleRequestLogs)(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/v0/management/usage") {
 		s.withCORS(s.handleUsage)(w, r)
 		return

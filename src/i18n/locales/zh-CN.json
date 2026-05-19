@@ -122,6 +122,7 @@
     "oauth": "OAuth 登录",
     "quota_management": "配额管理",
     "monitoring_center": "请求监控",
+    "request_logs": "请求日志",
     "config_management": "配置面板",
     "logs": "日志查看",
     "system_info": "中心信息"

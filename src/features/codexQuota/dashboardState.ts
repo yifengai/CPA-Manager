@@ -6,7 +6,6 @@ import {
   type ModelPrice,
 } from '@/utils/usage';
 
-export type AccountHealthTone = 'good' | 'watch' | 'danger' | 'disabled';
 export type CodexQuotaBusinessStatus = 'callable' | 'limited' | 'error' | 'unknown';
 export type RecoveryDayBucketKey =
   | 'restored'
@@ -28,29 +27,12 @@ export type SurvivalBucketKey =
   | 'day14Plus'
   | 'unknown';
 
-export interface AccountHealth {
-  label: string;
-  reason: string;
-  tone: AccountHealthTone;
-  rank: number;
-}
-
 export interface AccountListDisplay {
   switchLabel: string;
   switchTone: 'enabled' | 'disabled';
   businessLabel: string;
   businessTone: CodexQuotaBusinessStatus;
   reason: string;
-}
-
-export interface RefreshReport {
-  requestedCount: number;
-  refreshedCount: number;
-  availableCount: number;
-  limitedCount: number;
-  errorCount: number;
-  tokenInvalidCount: number;
-  durationText: string;
 }
 
 export interface TodayRestoredAccount {
@@ -308,76 +290,6 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
   return '-';
 };
 
-export const isCodexQuotaUnavailable = (account: CodexQuotaAccount) =>
-  getCodexQuotaBusinessStatus(account) === 'error';
-
-export const getAccountHealth = (account: CodexQuotaAccount): AccountHealth => {
-  const reason = normalizeQuotaErrorReason(account);
-  const remaining = account.currentRemainingPercent;
-  const businessStatus = getCodexQuotaBusinessStatus(account);
-
-  if (businessStatus === 'error' && (reason === 'Token已失效' || reason === '登录凭证无效')) {
-    return {
-      label: '需要重新登录',
-      reason,
-      tone: 'danger',
-      rank: 1,
-    };
-  }
-
-  if (businessStatus === 'error') {
-    return {
-      label: '需要检查',
-      reason,
-      tone: 'danger',
-      rank: 2,
-    };
-  }
-
-  if (businessStatus === 'unknown') {
-    return {
-      label: '未知',
-      reason: reason === '-' ? '余量数据不完整' : reason,
-      tone: 'watch',
-      rank: 4,
-    };
-  }
-
-  if (businessStatus === 'limited') {
-    return {
-      label: '受限',
-      reason: reason === '-' ? '当前周期已受限' : reason,
-      tone: 'danger',
-      rank: 2,
-    };
-  }
-
-  if (account.disabled || account.status === 'disabled') {
-    return {
-      label: '可调用',
-      reason: '已停用，不进入调用池',
-      tone: 'disabled',
-      rank: 5,
-    };
-  }
-
-  if (typeof remaining === 'number' && remaining <= 20) {
-    return {
-      label: '观察',
-      reason: '剩余额度偏低',
-      tone: 'watch',
-      rank: 3,
-    };
-  }
-
-  return {
-    label: '可调用',
-    reason: '状态正常',
-    tone: 'good',
-    rank: 6,
-  };
-};
-
 export const getAccountListDisplay = (account: CodexQuotaAccount): AccountListDisplay => {
   const businessStatus = getCodexQuotaBusinessStatus(account);
   const switchDisabled = account.disabled || account.status === 'disabled';
@@ -623,63 +535,3 @@ export const buildTodayRestoredHistory = ({
     (left, right) => sortableResetTime(right.restoredAt) - sortableResetTime(left.restoredAt)
   );
 };
-
-export const buildPriorityAccounts = (accounts: CodexQuotaAccount[], limit = 6) =>
-  accounts
-    .filter((account) => {
-      const health = getAccountHealth(account);
-      return health.tone === 'danger' || (health.tone === 'watch' && !account.disabled);
-    })
-    .sort((left, right) => {
-      const leftHealth = getAccountHealth(left);
-      const rightHealth = getAccountHealth(right);
-      if (leftHealth.rank !== rightHealth.rank) return leftHealth.rank - rightHealth.rank;
-      return (left.currentRemainingPercent ?? 999) - (right.currentRemainingPercent ?? 999);
-    })
-    .slice(0, limit);
-
-export const buildSoonRecoveringAccounts = (
-  accounts: CodexQuotaAccount[],
-  now = Date.now(),
-  limit = 6
-) => {
-  const threeDays = 3 * 24 * 60 * 60 * 1000;
-  return accounts
-    .filter((account) => {
-      const resetAt = sortableResetTime(account.currentResetAt);
-      return resetAt !== Number.MAX_SAFE_INTEGER && resetAt >= now && resetAt <= now + threeDays;
-    })
-    .sort(
-      (left, right) =>
-        sortableResetTime(left.currentResetAt) - sortableResetTime(right.currentResetAt)
-    )
-    .slice(0, limit);
-};
-
-const formatDuration = (durationMs: number) => {
-  if (!Number.isFinite(durationMs) || durationMs <= 0) return '0秒';
-  if (durationMs < 1000) return `${Math.round(durationMs)}毫秒`;
-  return `${Math.round(durationMs / 100) / 10}秒`;
-};
-
-export const buildRefreshReport = ({
-  requestedCount,
-  refreshedAccounts,
-  startedAt,
-  endedAt,
-}: {
-  requestedCount: number;
-  refreshedAccounts: CodexQuotaAccount[];
-  startedAt: number;
-  endedAt: number;
-}): RefreshReport => ({
-  requestedCount,
-  refreshedCount: refreshedAccounts.length,
-  availableCount: refreshedAccounts.filter((account) => account.status === 'available').length,
-  limitedCount: refreshedAccounts.filter((account) => account.status === 'limited').length,
-  errorCount: refreshedAccounts.filter((account) => account.status === 'error').length,
-  tokenInvalidCount: refreshedAccounts.filter((account) =>
-    normalizeQuotaErrorReason(account).includes('Token')
-  ).length,
-  durationText: formatDuration(endedAt - startedAt),
-});

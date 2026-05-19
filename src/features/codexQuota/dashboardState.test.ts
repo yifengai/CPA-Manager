@@ -3,8 +3,6 @@ import type { CodexQuotaAccount } from '@/services/api';
 import {
   buildAccountPoolBalance,
   buildQuotaCycleProgress,
-  buildPriorityAccounts,
-  buildRefreshReport,
   buildTodayUsageSummary,
   buildTodayRestoredHistory,
   formatAccountSurvivalDays,
@@ -12,9 +10,7 @@ import {
   getAccountSurvivalBucketKey,
   getAccountListDisplay,
   getCodexQuotaBusinessStatus,
-  getAccountHealth,
   getRecoveryDayBucketKey,
-  isCodexQuotaUnavailable,
   normalizeQuotaErrorReason,
 } from './dashboardState';
 
@@ -304,11 +300,6 @@ describe('codex quota dashboard state', () => {
     });
 
     expect(normalizeQuotaErrorReason(account)).toBe('Token已失效');
-    expect(getAccountHealth(account)).toMatchObject({
-      label: '需要重新登录',
-      tone: 'danger',
-      rank: 1,
-    });
   });
 
   it('classifies business status independently from the local disabled switch', () => {
@@ -341,76 +332,6 @@ describe('codex quota dashboard state', () => {
         })
       )
     ).toBe('unknown');
-  });
-
-  it('prioritizes accounts that need action before low-balance observation accounts', () => {
-    const accounts = [
-      createAccount({ account: 'healthy@example.com', currentRemainingPercent: 90 }),
-      createAccount({ account: 'low@example.com', currentRemainingPercent: 18 }),
-      createAccount({
-        account: 'limited@example.com',
-        status: 'limited',
-        limitReached: true,
-        currentRemainingPercent: 0,
-      }),
-      createAccount({ account: 'disabled@example.com', disabled: true, status: 'disabled' }),
-    ];
-
-    expect(buildPriorityAccounts(accounts).map((account) => account.account)).toEqual([
-      'limited@example.com',
-      'low@example.com',
-    ]);
-  });
-
-  it('summarizes refresh results with action-oriented counts', () => {
-    const report = buildRefreshReport({
-      requestedCount: 3,
-      refreshedAccounts: [
-        createAccount({ account: 'ok@example.com' }),
-        createAccount({
-          account: 'limited@example.com',
-          status: 'limited',
-          limitReached: true,
-          currentRemainingPercent: 0,
-        }),
-        createAccount({
-          account: 'token@example.com',
-          status: 'error',
-          error: 'token_invalidated',
-        }),
-      ],
-      startedAt: 1_000,
-      endedAt: 2_450,
-    });
-
-    expect(report).toMatchObject({
-      requestedCount: 3,
-      refreshedCount: 3,
-      limitedCount: 1,
-      errorCount: 1,
-      tokenInvalidCount: 1,
-      durationText: '1.5秒',
-    });
-  });
-
-  it('treats auth failures as unavailable even when the local switch is disabled', () => {
-    expect(
-      isCodexQuotaUnavailable(
-        createAccount({ status: 'error', statusText: 'HTTP 401', error: 'token_invalidated' })
-      )
-    ).toBe(true);
-
-    expect(
-      isCodexQuotaUnavailable(
-        createAccount({ status: 'limited', limitReached: true, currentRemainingPercent: 0 })
-      )
-    ).toBe(false);
-    expect(isCodexQuotaUnavailable(createAccount({ currentRemainingPercent: 5 }))).toBe(false);
-    expect(
-      isCodexQuotaUnavailable(
-        createAccount({ disabled: true, status: 'disabled', error: 'HTTP 401' })
-      )
-    ).toBe(true);
   });
 
   it('keeps accounts in today restored history after the reset time rolls to the next window', () => {
