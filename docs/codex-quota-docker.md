@@ -13,6 +13,23 @@
 - Usage 用量统计、调用监控、模型费用估算
 - 原 CPA 管理面板中的配置、AI 提供商、认证文件、OAuth、日志、系统信息等功能
 
+## 0. 分支说明
+
+本文档只适用于 `codex-quota-panel` 分支。这个分支用于维护 Codex 账号余量、账号池估算、今日消耗、失败记录清理和相关 Docker 部署能力。
+
+建议按下面的分支边界使用：
+
+| 分支                | 用途                                                 |
+| ------------------- | ---------------------------------------------------- |
+| `main`              | 跟随原 CPA-Manager / CPAMC 上游代码，不混入定制功能  |
+| `codex-quota-panel` | 只维护 Codex 余量面板、Docker 分享部署和配套使用文档 |
+
+如果你是从 GitHub 获取代码，请确认当前分支是：
+
+```bash
+git checkout codex-quota-panel
+```
+
 ## 1. 适合谁使用
 
 适合以下场景：
@@ -71,11 +88,12 @@ remote-management:
 
 ## 4. 需要分享给用户的文件
 
-分享给其他用户时，只需要给这三个内容：
+分享给其他用户时，只需要给这些内容：
 
 1. 本文档：`docs/codex-quota-docker.md`
 2. Compose 文件：`docker-compose.codex-quota.yml`
 3. 配置模板：`.env.example`
+4. 手册截图：`img/codex-quota-*.png`
 
 不要分享：
 
@@ -187,6 +205,12 @@ http://127.0.0.1:18317/management.html#/codex-quota
 
 ## 7. Codex 余量页面使用说明
 
+### 7.0 页面总览
+
+![Codex 余量页面总览](../img/codex-quota-dashboard-overview-20260519.png)
+
+截图中的账号信息已经替换为示例内容。实际使用时，页面会显示你自己的账号数量、余量分布、今日消耗和账号列表。
+
 ### 7.1 顶部刷新区
 
 | 功能         | 说明                              |
@@ -236,6 +260,8 @@ CODEX_QUOTA_ESTIMATE_CALLS=34
 ### 7.4 筛选标签
 
 #### 账号状态
+
+![可调用账号列表示例](../img/codex-quota-callable-account-list-20260519.png)
 
 | 标签   | 含义                                                               |
 | ------ | ------------------------------------------------------------------ |
@@ -295,6 +321,8 @@ CODEX_QUOTA_ESTIMATE_CALLS=34
 | 未知       | 没有可识别的首次导入时间     |
 
 ### 7.8 账号列表显示与操作
+
+![账号列表与批量操作](../img/codex-quota-account-list-20260519.png)
 
 账号字段分为两行：
 
