@@ -1,108 +1,464 @@
-# Codex 余量面板 Docker 部署说明
+# Codex 余量面板部署与使用手册
 
-这份文档面向不熟悉代码构建的用户。部署后可以在浏览器里查看 Codex 账号余量、恢复时间、账号池估算、启用/停用账号，并清除失败调用记录。
+本文档面向想直接使用 Docker 部署的用户。你不需要编译代码，只需要准备好已经运行的 CLIProxyAPI、Codex 账号文件目录和 Docker。
 
-## 一、准备条件
+部署后可以在浏览器中查看：
 
-你需要先准备好：
+- Codex 账号余量和重置时间
+- 账号池总余量估算
+- 今日已重置账号
+- 账号启用、停用、删除
+- 批量刷新、刷新已选账号
+- 清除失败调用记录
+- Usage 用量统计、调用监控、模型费用估算
+- 原 CPA 管理面板中的配置、AI 提供商、认证文件、OAuth、日志、系统信息等功能
 
-1. 已经运行的 CLIProxyAPI。
-2. CLIProxyAPI 的 Codex 账号文件目录，也就是一组 `.json` 账号文件所在目录。
-3. Docker Desktop 或 Docker Engine。
-4. 一个你自己设置的 Management Key。
+## 1. 适合谁使用
 
-不要把账号 JSON、`.env`、数据库、日志上传到 GitHub 或发给别人。
+适合以下场景：
 
-## 二、下载配置文件
+1. 已经在本地或服务器部署了 CLIProxyAPI。
+2. 有一批 Codex 账号 JSON 文件。
+3. 希望直观看到每个账号的剩余额度、重置时间、是否受限。
+4. 希望用 Docker 一键启动管理面板。
+5. 希望把面板分享给其他用户，但不暴露自己的账号、密钥、数据库和本地路径。
 
-把下面两个文件放到同一个空目录里：
+不适合以下场景：
 
-- `docker-compose.codex-quota.yml`
-- `.env.example`
+1. 还没有部署 CLIProxyAPI。
+2. 想把服务直接暴露到公网且没有额外登录保护。
+3. 希望镜像里预置账号文件或密钥。
 
-然后复制一份配置：
+## 2. 整体架构
+
+```text
+浏览器
+  -> CPA-Manager 面板 :18317
+      -> 内置管理页面
+      -> 读取 /data/usage.sqlite
+      -> 读取 /auths 下的 Codex 账号文件
+      -> 代理访问 CLIProxyAPI Management API
+
+CLIProxyAPI
+  -> 提供 /v0/management/*
+  -> 提供 usage queue
+  -> 使用自己的 auths 账号目录
+```
+
+面板不包含 CLIProxyAPI 本体。CLIProxyAPI 需要单独运行。
+
+## 3. 准备条件
+
+你需要准备：
+
+| 项目             | 说明                               |
+| ---------------- | ---------------------------------- |
+| CLIProxyAPI      | 已经启动，并且 Management API 可用 |
+| Management Key   | CLIProxyAPI 的管理密钥             |
+| Codex auths 目录 | 存放 Codex 账号 `.json` 文件的目录 |
+| Docker           | Docker Desktop 或 Docker Engine    |
+| docker compose   | Docker Desktop 通常已自带          |
+
+CLIProxyAPI 建议开启：
+
+```yaml
+usage-statistics-enabled: true
+remote-management:
+  allow-remote: true
+```
+
+如果你只在本机使用，也可以按自己的安全策略限制访问范围。
+
+## 4. 需要分享给用户的文件
+
+分享给其他用户时，只需要给这三个内容：
+
+1. 本文档：`docs/codex-quota-docker.md`
+2. Compose 文件：`docker-compose.codex-quota.yml`
+3. 配置模板：`.env.example`
+
+不要分享：
+
+- `.env`
+- `auths/`
+- `data/`
+- `reports/`
+- `deleted-auths/`
+- `*.sqlite`
+- 日志文件
+- 任何真实 Management Key
+- 任何真实账号 JSON
+
+## 5. 快速部署
+
+### 5.1 新建部署目录
+
+在任意位置新建一个空目录，例如：
+
+```bash
+mkdir cpa-manager-codex
+cd cpa-manager-codex
+```
+
+把以下两个文件放到这个目录中：
+
+```text
+docker-compose.codex-quota.yml
+.env.example
+```
+
+### 5.2 复制配置文件
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，至少修改这几项：
+### 5.3 编辑 `.env`
+
+至少修改这三项：
 
 ```env
-CPA_MANAGEMENT_KEY=your-own-key
+CPA_MANAGEMENT_KEY=your-own-management-key
 CPA_CODEX_AUTH_PATH=/absolute/path/to/your/auths
 CPA_UPSTREAM_URL=http://cli-proxy-api:8317
 ```
 
-如果 CLIProxyAPI 跑在宿主机上，而不是同一个 Docker 网络里，通常可以改成：
+字段说明：
+
+| 字段                            | 必填 | 说明                                                            |
+| ------------------------------- | ---- | --------------------------------------------------------------- |
+| `CPA_MANAGER_IMAGE`             | 是   | 面板镜像地址                                                    |
+| `CPA_MANAGER_PORT`              | 是   | 面板访问端口，默认 `18317`                                      |
+| `CPA_MANAGEMENT_KEY`            | 是   | CLIProxyAPI Management Key                                      |
+| `CPA_CODEX_AUTH_PATH`           | 是   | 本机 Codex 账号 JSON 文件目录                                   |
+| `CPA_UPSTREAM_URL`              | 是   | 容器内访问 CLIProxyAPI 的地址                                   |
+| `CODEX_QUOTA_ESTIMATE_TOKENS`   | 否   | 单账号周期估算 Tokens                                           |
+| `CODEX_QUOTA_ESTIMATE_COST_USD` | 否   | 单账号周期估算价值，默认按 GPT-5.5 输入价格 $5 / 1M tokens 估算 |
+| `CODEX_QUOTA_ESTIMATE_CALLS`    | 否   | 单账号周期估算调用次数                                          |
+
+### 5.4 选择 CLIProxyAPI 地址
+
+如果 CPA-Manager 和 CLIProxyAPI 在同一个 Docker 网络中，常见写法是：
+
+```env
+CPA_UPSTREAM_URL=http://cli-proxy-api:8317
+```
+
+如果 CLIProxyAPI 跑在 Docker Desktop 宿主机上，常见写法是：
 
 ```env
 CPA_UPSTREAM_URL=http://host.docker.internal:8317
 ```
 
-## 三、启动
+如果 CLIProxyAPI 跑在另一台机器上：
 
-在配置文件所在目录执行：
+```env
+CPA_UPSTREAM_URL=http://your-server-ip:8317
+```
+
+### 5.5 启动
 
 ```bash
 docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 ```
 
-启动后打开：
+### 5.6 打开页面
+
+默认地址：
 
 ```text
 http://127.0.0.1:18317/management.html#/codex-quota
 ```
 
-如果你改了端口，例如 `CPA_MANAGER_PORT=19017`，访问地址就是：
+如果部署在服务器上，把 `127.0.0.1` 换成服务器地址。
 
-```text
-http://127.0.0.1:19017/management.html#/codex-quota
-```
+## 6. 登录与首次连接
 
-## 四、账号池估算参数
+打开页面后，按页面提示填写：
 
-账号池余量看板使用本地估算参数，不是官方固定额度。默认值：
+| 字段           | 填写内容                                                                   |
+| -------------- | -------------------------------------------------------------------------- |
+| CPA 地址       | 通常填写 `http://cli-proxy-api:8317` 或 `http://host.docker.internal:8317` |
+| Management Key | 你的 CLIProxyAPI Management Key                                            |
+
+如果你用的是本文档的 Docker Compose，通常这些值已经通过 `.env` 配置，页面会直接连接。
+
+登录成功后进入管理面板。建议先进入【Codex 余量】页面，点击【刷新余量】。
+
+## 7. Codex 余量页面使用说明
+
+### 7.1 顶部刷新区
+
+| 功能         | 说明                              |
+| ------------ | --------------------------------- |
+| 当前刷新时间 | 显示最近一次刷新完成的北京时间    |
+| 刷新余量     | 查询所有 Codex 账号的最新余量     |
+| 清除失败记录 | 删除 Usage 数据库中的失败调用记录 |
+
+进入页面时，【今日消耗】会自动拉取最新 Usage 数据；账号余量不会自动刷新，需要手动点击【刷新余量】。这样可以避免每次打开页面都触发大量账号查询。
+
+### 7.2 账号池余量看板
+
+看板用于估算当前账号池还可以承接多少调用。
+
+| 指标                  | 说明                                        |
+| --------------------- | ------------------------------------------- |
+| 可调用账号 / 库存账号 | 根据看板右上角【当前可用池 / 全部库存】切换 |
+| 预估剩余 Tokens       | 根据每个账号剩余百分比估算                  |
+| 预计可调用            | 按 `.env` 里的平均 Tokens/次参数估算        |
+| 等价价值              | 按 `.env` 里的美元价值参数估算              |
+
+默认估算参数：
 
 ```env
 CODEX_QUOTA_ESTIMATE_TOKENS=4000000
-CODEX_QUOTA_ESTIMATE_COST_USD=4
+CODEX_QUOTA_ESTIMATE_COST_USD=20
 CODEX_QUOTA_ESTIMATE_CALLS=34
 ```
 
-含义：
+默认价值按 GPT-5.5 官方输入价格 $5 / 1M tokens 估算：4M Tokens 约等于 $20。这个值不是官方账号额度，只是本地估算基准。你可以根据自己的历史用量调整。
 
-- `CODEX_QUOTA_ESTIMATE_TOKENS`：一个账号周期估算可用 Tokens。
-- `CODEX_QUOTA_ESTIMATE_COST_USD`：一个账号周期估算价值。
-- `CODEX_QUOTA_ESTIMATE_CALLS`：一个账号周期估算可承接调用次数。
+### 7.3 今日消耗
 
-如果你的使用习惯不同，可以直接改 `.env` 后重启：
+【今日消耗】用于查看北京时间当天的 Usage 统计。数据会在进入页面时自动刷新，并写入浏览器缓存；再次点击【刷新余量】时也会同步更新。
 
-```bash
-docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
+| 指标        | 说明                             |
+| ----------- | -------------------------------- |
+| 总调用      | 今日请求总数                     |
+| 调用成功率  | 成功请求占比，并显示平均响应时间 |
+| 失败总数    | 今日失败调用数                   |
+| 预估花费    | 按模型价格估算的今日成本         |
+| 总 Tokens   | 今日总 Tokens，并显示推理 Tokens |
+| 输入 Tokens | 今日输入 Tokens 和占比           |
+| 输出 Tokens | 今日输出 Tokens 和占比           |
+| 缓存 Tokens | 今日缓存 Tokens 和缓存命中率     |
+
+### 7.4 筛选标签
+
+#### 账号状态
+
+| 标签   | 含义                                                               |
+| ------ | ------------------------------------------------------------------ |
+| 全部   | 所有 Codex 账号                                                    |
+| 可调用 | 余量可查、未受限、未出现认证异常的账号                             |
+| 受限   | 当前周期触发限制、余量为 0、`allowed=false` 或 `limitReached=true` |
+| 异常   | Token 失效、登录凭证无效、认证失败等明确不可用状态                 |
+| 未知   | 查询超时、数据不完整或暂时无法判断                                 |
+| 启用   | 当前没有被标记为 disabled                                          |
+| 停用   | 已停用，不进入调用池                                               |
+
+停用账号仍然可以查询余量和重置时间，但不会进入调用池。
+
+#### 开关、类型和排序
+
+搜索区支持组合筛选：
+
+| 筛选 | 说明                                   |
+| ---- | -------------------------------------- |
+| 状态 | 可调用、受限、异常、未知               |
+| 开关 | 启用、停用                             |
+| 类型 | free、Plus、Pro、Team 等账号类型       |
+| 排序 | 剩余额度、重置时间、存活时间、账号名称 |
+
+### 7.5 余量分布标签
+
+| 标签    | 含义             |
+| ------- | ---------------- |
+| 0%      | 当前可用余量为 0 |
+| 1-20%   | 低余量           |
+| 21-50%  | 中低余量         |
+| 51-80%  | 正常余量         |
+| 81-90%  | 高余量           |
+| 91-100% | 接近满额         |
+
+### 7.6 重置时间标签
+
+| 标签         | 含义                                                     |
+| ------------ | -------------------------------------------------------- |
+| 已重置       | 当前时间已经超过重置时间，或刷新时检测到今天已进入新周期 |
+| 今天         | 今天内重置                                               |
+| 明天         | 明天重置                                                 |
+| 2天后至7天后 | 对应日期重置                                             |
+| 未知         | 没有可靠重置时间                                         |
+
+### 7.7 存活周期标签
+
+存活周期按账号首次导入时间到当前时间计算，用于观察账号批次质量，不直接等同于可用性。
+
+| 标签       | 含义                         |
+| ---------- | ---------------------------- |
+| `<1天`     | 新导入账号，适合检查导入质量 |
+| `1-3天`    | 观察期账号                   |
+| `3-7天`    | 正常存活账号                 |
+| `7-14天`   | 较稳定账号                   |
+| `14天以上` | 长存活账号                   |
+| 未知       | 没有可识别的首次导入时间     |
+
+### 7.8 账号列表显示与操作
+
+账号字段分为两行：
+
+```text
+[free] 完整邮箱地址                         [启用 / 已停用]
+[可调用 / 受限 / 异常 / 未知]  原因说明
 ```
 
-## 五、升级
+说明：
 
-拉取新镜像并重启：
+| 字段                        | 含义                                                      |
+| --------------------------- | --------------------------------------------------------- |
+| `free` / `plus` / `pro`     | 账号类型                                                  |
+| 完整邮箱地址                | 账号标识，不做省略                                        |
+| 启用 / 已停用               | 本地开关状态，决定是否进入调用池                          |
+| 可调用 / 受限 / 异常 / 未知 | 账号业务状态                                              |
+| 原因说明                    | 例如“已停用，不进入调用池”“账号已达调用上限”“Token已失效” |
+
+账号列表支持：
+
+| 操作     | 说明                                      |
+| -------- | ----------------------------------------- |
+| 刷新     | 只刷新当前账号                            |
+| 启用     | 将账号 JSON 中的 `disabled` 改为 `false`  |
+| 停用     | 将账号 JSON 中的 `disabled` 改为 `true`   |
+| 删除     | 将账号文件移动到 `deleted-auths` 归档目录 |
+| 批量启用 | 对已选账号批量启用                        |
+| 批量停用 | 对已选账号批量停用                        |
+| 批量删除 | 对已选账号批量归档删除                    |
+| 刷新已选 | 只刷新勾选账号                            |
+
+删除不是直接永久删除，而是归档到：
+
+```text
+/data/deleted-auths/<时间戳>/
+```
+
+## 8. 自动停用规则
+
+当前规则：
+
+1. 账号受限时，默认自动停用。
+2. 账号异常时，默认自动停用。
+3. 已停用账号不进入调用池。
+4. 已停用账号仍可查询余量和重置时间。
+
+这样做的目的是避免受限或异常账号继续参与调用，减少失败请求和无效重试。
+
+## 9. 用量统计和调用监控
+
+CPA-Manager 会消费 CLIProxyAPI 的 usage queue，并写入 SQLite。
+
+你可以在【调用监控】页面查看：
+
+- 总调用次数
+- 成功率
+- 平均响应时间
+- 失败总数
+- 预估花费
+- 输入 Tokens
+- 输出 Tokens
+- 缓存 Tokens
+- 推理 Tokens
+- 按账号、模型、时间维度筛选
+
+如果看不到历史用量，优先检查：
+
+1. CLIProxyAPI 是否开启 `usage-statistics-enabled: true`。
+2. CPA-Manager 是否一直运行。
+3. CLIProxyAPI usage queue 保留时间是否太短。
+4. 面板是否连接到了正确的 CPA 地址。
+
+## 10. 清除失败记录
+
+在【Codex 余量】页面点击【清除失败记录】后，会删除 Usage SQLite 中标记为失败的调用记录。
+
+它会影响：
+
+- 失败总数
+- 成功率
+- 失败调用对应的 Tokens 和费用统计
+
+它不会删除：
+
+- 成功调用记录
+- auth 账号文件
+- CLIProxyAPI 配置
+- 原始日志文件
+
+## 11. 升级
+
+进入部署目录后执行：
 
 ```bash
 docker compose -f docker-compose.codex-quota.yml --env-file .env pull
 docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
 ```
 
-数据保存在 Docker volume `cpa-manager-data` 中，账号文件来自你本机挂载的 `CPA_CODEX_AUTH_PATH`，不会被打进镜像。
+升级不会自动删除：
 
-## 六、维护者发布镜像
+- `/data/usage.sqlite`
+- `/data/deleted-auths`
+- 你挂载的 auths 目录
 
-如果你要把镜像发布给其他人使用，建议使用独立的公开发布标签：
+## 12. 备份和恢复
+
+### 12.1 需要备份什么
+
+建议备份：
+
+| 数据           | 位置                                                       |
+| -------------- | ---------------------------------------------------------- |
+| 用量数据库     | Docker volume `cpa-manager-data` 中的 `/data/usage.sqlite` |
+| 已删除账号归档 | `/data/deleted-auths`                                      |
+| Codex 账号文件 | `.env` 中的 `CPA_CODEX_AUTH_PATH`                          |
+| 配置文件       | `.env`                                                     |
+
+### 12.2 导出用量
+
+可以在调用监控页面使用导出功能，也可以备份 Docker volume。
+
+### 12.3 恢复账号文件
+
+如果误删账号，可以从 `deleted-auths` 对应时间目录中找回 JSON 文件，再放回 auths 目录。
+
+## 13. 隐私和安全
+
+分享给别人前必须确认：
+
+1. `.env` 没有提交。
+2. `auths/` 没有提交。
+3. `data/` 没有提交。
+4. `reports/` 没有提交。
+5. SQLite 数据库没有提交。
+6. 日志文件没有提交。
+7. 文档中没有你的真实本机路径。
+8. 文档中没有你的真实 Management Key。
+9. Docker 镜像中没有账号文件。
+
+本项目的 `.dockerignore` 已默认排除：
+
+```text
+.env
+.env.*
+auths/
+data/
+reports/
+deleted-auths/
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+```
+
+## 14. 维护者发布镜像
+
+如果你是维护者，需要把镜像发布给其他人使用，可以执行：
 
 ```bash
 docker build -f Dockerfile.usage-service -t ghcr.io/yifengai/cpa-manager:codex-quota .
 docker push ghcr.io/yifengai/cpa-manager:codex-quota
 ```
 
-发布前先检查构建上下文，确认没有账号、密钥、数据库、报告文件：
+发布前建议检查：
 
 ```bash
 git status --short
@@ -110,34 +466,98 @@ git grep -n "CPA_MANAGEMENT_KEY\\|/Users/\\|auths/" -- ':!docs/codex-quota-docke
 docker build -f Dockerfile.usage-service -t cpa-manager:privacy-check .
 ```
 
-`.dockerignore` 已默认排除 `.env`、`auths/`、`data/`、`reports/`、SQLite 数据库和日志文件。即便如此，发布前仍建议在一个干净目录里构建镜像。
+如果镜像发布在其他仓库，请修改 `.env` 中的：
 
-## 七、安全建议
+```env
+CPA_MANAGER_IMAGE=your-registry/your-image:your-tag
+```
 
-1. 不要把服务直接暴露到公网。
-2. 不要共享你的 Management Key。
-3. 不要提交 `.env` 文件。
-4. 不要提交 `auths/`、`data/`、`reports/`、`*.sqlite`。
-5. 如果需要远程访问，建议使用 VPN 或带登录认证的反向代理。
+## 15. 常见问题
 
-## 八、常见问题
+### 页面打不开
 
-### 打开页面后没有账号
+检查容器是否启动：
 
-检查 `.env` 里的 `CPA_CODEX_AUTH_PATH` 是否指向真实账号目录。
-
-### 页面能打开，但刷新失败
-
-检查 `CPA_UPSTREAM_URL` 是否能从容器内访问到 CLIProxyAPI。
-
-### 提示未授权
-
-确认页面登录时填写的 Management Key 与 `.env` 里的 `CPA_MANAGEMENT_KEY` 一致。
-
-### 容器启动失败
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env ps
+```
 
 查看日志：
 
 ```bash
 docker compose -f docker-compose.codex-quota.yml --env-file .env logs -f
+```
+
+### 登录提示未授权
+
+检查 `.env` 中的 `CPA_MANAGEMENT_KEY` 是否和 CLIProxyAPI 的 Management Key 一致。
+
+### 打开页面后没有账号
+
+检查：
+
+1. `CPA_CODEX_AUTH_PATH` 是否指向真实目录。
+2. 目录里是否有 `.json` 文件。
+3. JSON 文件中 `type` 是否为 `codex`。
+4. Docker 是否有权限读取该目录。
+
+### 刷新余量失败
+
+检查：
+
+1. 账号 JSON 是否包含 `access_token`。
+2. 当前网络是否能访问 `chatgpt.com`。
+3. 账号是否需要重新登录。
+4. 容器时间是否正常。
+
+### 页面能打开，但调用监控没有数据
+
+检查：
+
+1. CLIProxyAPI 是否开启 `usage-statistics-enabled: true`。
+2. `CPA_UPSTREAM_URL` 是否正确。
+3. CPA-Manager 是否能访问 CLIProxyAPI。
+4. 是否只有启动 CPA-Manager 之后的新调用才进入数据库。
+
+### Docker Desktop 访问不到宿主机 CLIProxyAPI
+
+把 `.env` 中的地址改成：
+
+```env
+CPA_UPSTREAM_URL=http://host.docker.internal:8317
+```
+
+### Linux Docker 访问不到宿主机 CLIProxyAPI
+
+可以在 compose 中增加 host gateway，或把 CLIProxyAPI 和 CPA-Manager 放到同一个 Docker 网络中。
+
+### 修改 `.env` 后没有生效
+
+重新启动：
+
+```bash
+docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
+```
+
+## 16. 推荐分享话术
+
+你可以把下面这段发给其他用户：
+
+```text
+这是一个 CLIProxyAPI 的 Docker 管理面板，重点增强了 Codex 账号余量、重置时间、账号池估算和失败记录清理。
+
+使用前需要准备：
+1. 已运行的 CLIProxyAPI
+2. CLIProxyAPI Management Key
+3. Codex auth JSON 文件目录
+4. Docker
+
+按文档复制 docker-compose.codex-quota.yml 和 .env.example，改好 .env 后执行：
+
+docker compose -f docker-compose.codex-quota.yml --env-file .env up -d
+
+然后打开：
+http://127.0.0.1:18317/management.html#/codex-quota
+
+注意：不要把 .env、auths、data、SQLite、日志文件发给别人。
 ```

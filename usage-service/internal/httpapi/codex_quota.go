@@ -16,7 +16,10 @@ import (
 	"time"
 )
 
-const codexQuotaWorkers = 16
+const (
+	codexQuotaWorkers        = 32
+	codexQuotaRequestTimeout = 12 * time.Second
+)
 
 var codexUsageURL = "https://chatgpt.com/backend-api/wham/usage"
 
@@ -25,6 +28,7 @@ type codexAuthFile struct {
 	Type         string `json:"type"`
 	Email        string `json:"email"`
 	AccountID    string `json:"account_id"`
+	ImportedAt   string `json:"-"`
 	Disabled     bool   `json:"disabled"`
 	Expired      string `json:"expired"`
 	LastRefresh  string `json:"last_refresh"`
@@ -36,6 +40,7 @@ type codexQuotaAccount struct {
 	File                    string  `json:"file"`
 	Account                 string  `json:"account"`
 	Email                   string  `json:"email"`
+	ImportedAt              string  `json:"importedAt"`
 	Disabled                bool    `json:"disabled"`
 	Status                  string  `json:"status"`
 	StatusText              string  `json:"statusText"`
@@ -265,20 +270,25 @@ func loadCodexAuthFiles(authDir string) ([]codexAuthFile, error) {
 			continue
 		}
 		path := filepath.Join(authDir, entry.Name())
+		importedAt := ""
+		if info, err := entry.Info(); err == nil {
+			importedAt = timeToBeijing(fileBirthTime(path, info.ModTime()))
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			accounts = append(accounts, codexAuthFile{File: entry.Name(), Email: entry.Name()})
+			accounts = append(accounts, codexAuthFile{File: entry.Name(), Email: entry.Name(), ImportedAt: importedAt})
 			continue
 		}
 		var account codexAuthFile
 		if err := json.Unmarshal(data, &account); err != nil {
-			accounts = append(accounts, codexAuthFile{File: entry.Name(), Email: entry.Name()})
+			accounts = append(accounts, codexAuthFile{File: entry.Name(), Email: entry.Name(), ImportedAt: importedAt})
 			continue
 		}
 		if account.Type != "codex" {
 			continue
 		}
 		account.File = entry.Name()
+		account.ImportedAt = importedAt
 		if strings.TrimSpace(account.Email) == "" {
 			account.Email = entry.Name()
 		}
@@ -317,6 +327,7 @@ func fetchCodexQuota(ctx context.Context, account codexAuthFile) codexQuotaAccou
 		File:           account.File,
 		Account:        firstNonEmpty(account.Email, account.AccountID, account.File),
 		Email:          account.Email,
+		ImportedAt:     account.ImportedAt,
 		Disabled:       account.Disabled,
 		TokenExpiredAt: isoToBeijing(account.Expired),
 		LastRefreshAt:  isoToBeijing(account.LastRefresh),
@@ -333,7 +344,7 @@ func fetchCodexQuota(ctx context.Context, account codexAuthFile) codexQuotaAccou
 		return base
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, codexQuotaRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, codexUsageURL, nil)
 	if err != nil {
@@ -406,7 +417,7 @@ func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAc
 	copy(updated, accounts)
 	for index := range updated {
 		account := &updated[index]
-		if account.Disabled || (account.Status != "limited" && account.Status != "error") {
+		if !shouldAutoDisableCodexQuotaAccount(*account) {
 			continue
 		}
 		originalStatus := account.Status
@@ -427,6 +438,29 @@ func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAc
 		}
 	}
 	return updated
+}
+
+func shouldAutoDisableCodexQuotaAccount(account codexQuotaAccount) bool {
+	if account.Disabled {
+		return false
+	}
+	if account.Status == "limited" {
+		return true
+	}
+	if account.Status != "error" {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(account.StatusText + " " + account.Error))
+	if text == "" {
+		return false
+	}
+	return strings.Contains(text, "缺少token") ||
+		strings.Contains(text, "access_token") ||
+		strings.Contains(text, "token_invalidated") ||
+		strings.Contains(text, "authentication token has been invalidated") ||
+		strings.Contains(text, "unauthorized") ||
+		strings.Contains(text, "http 401") ||
+		strings.Contains(text, "http 403")
 }
 
 func applyWindow(account *codexQuotaAccount, window *codexUsageWindow, primary bool) {
@@ -687,6 +721,13 @@ func isoToBeijing(value string) string {
 		return text
 	}
 	return parsed.In(beijingLocation()).Format("2006-01-02 15:04:05")
+}
+
+func timeToBeijing(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.In(beijingLocation()).Format("2006-01-02 15:04:05")
 }
 
 func beijingNowText() string {

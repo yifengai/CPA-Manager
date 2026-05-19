@@ -24,6 +24,9 @@ func TestLoadCreatesDefaultConfig(t *testing.T) {
 	if want := filepath.Join(dir, "data", "usage.sqlite"); cfg.DBPath != want {
 		t.Fatalf("DBPath = %q, want %q", cfg.DBPath, want)
 	}
+	if cfg.CodexQuotaEstimateTokens != 4000000 || cfg.CodexQuotaEstimateCostUSD != 20 {
+		t.Fatalf("codex quota estimate defaults = %#v", cfg)
+	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {

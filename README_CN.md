@@ -8,7 +8,7 @@ CPA 自 v6.10.0 起不再内置用量统计。当前方案通过常驻 Usage Ser
 
 - **CPA 主项目**: https://github.com/router-for-me/CLIProxyAPI
 - **推荐 CPA 版本**: >= v6.10.8
-- **Codex 余量 Docker 部署**: [docs/codex-quota-docker.md](docs/codex-quota-docker.md)
+- **Codex 余量部署与使用手册**: [docs/codex-quota-docker.md](docs/codex-quota-docker.md)
 
 ## 面板预览
 
@@ -30,11 +30,11 @@ CPA 自 v6.10.0 起不再内置用量统计。当前方案通过常驻 Usage Ser
 
 ## 选择部署模式
 
-| 模式 | 入口地址 | 用户需要配置 | 适用场景 |
-|---|---|---|---|
-| 完整 Docker 方案 | `http://<host>:18317/management.html` | 登录时填写 CPA 地址 + Management Key | 新部署、单入口、最少浏览器/CORS 问题 |
-| CPA 控制面板方案 | `http://<cpa-host>:8317/management.html` | 在「中心信息 -> 外部用量统计服务」配置 Usage Service 地址 | 保留 CPA 自动载入面板的现有习惯 |
-| 前端开发方案 | Vite dev server 或 `dist/index.html` | CPA 地址，可选 Usage Service 地址 | 本地开发 |
+| 模式             | 入口地址                                 | 用户需要配置                                              | 适用场景                             |
+| ---------------- | ---------------------------------------- | --------------------------------------------------------- | ------------------------------------ |
+| 完整 Docker 方案 | `http://<host>:18317/management.html`    | 登录时填写 CPA 地址 + Management Key                      | 新部署、单入口、最少浏览器/CORS 问题 |
+| CPA 控制面板方案 | `http://<cpa-host>:8317/management.html` | 在「中心信息 -> 外部用量统计服务」配置 Usage Service 地址 | 保留 CPA 自动载入面板的现有习惯      |
+| 前端开发方案     | Vite dev server 或 `dist/index.html`     | CPA 地址，可选 Usage Service 地址                         | 本地开发                             |
 
 完整 Docker 方案不内置 CPA 本体。CPA 仍然作为上游服务独立运行；Docker 镜像提供 Usage Service 和内置管理面板。
 
@@ -158,7 +158,7 @@ services:
     image: seakee/cpa-manager:latest
     restart: unless-stopped
     ports:
-      - "18317:18317"
+      - '18317:18317'
     volumes:
       - cpa-manager-data:/data
 
@@ -235,24 +235,24 @@ docker compose -f docker-compose.usage.yml up --build
 
 大多数用户可以直接在面板中配置 CPA 地址和 Management Key。环境变量适合自动化部署。
 
-| 变量 | 默认值 | 说明 |
-|---|---:|---|
-| `CPA_MANAGER_CONFIG` | 空 | 可选配置文件路径；为空时原生包默认使用程序同目录的 `config.json` |
-| `HTTP_ADDR` | `0.0.0.0:18317` | Usage Service HTTP 监听地址 |
-| `USAGE_DB_PATH` | Docker：`/data/usage.sqlite`；原生包：`./data/usage.sqlite` | SQLite 数据库路径 |
-| `USAGE_DATA_DIR` | Docker：`/data`；原生包：`./data` | 未覆盖 `USAGE_DB_PATH` 时的数据目录 |
-| `CPA_UPSTREAM_URL` | 空 | 可选 CPA 地址，用于无人值守启动 |
-| `CPA_MANAGEMENT_KEY` | 空 | 可选 CPA Management Key，用于无人值守启动 |
-| `CPA_MANAGEMENT_KEY_FILE` | `/run/secrets/cpa_management_key` | 可选密钥文件 |
-| `USAGE_COLLECTOR_MODE` | `auto` | 采集方式：`auto` 优先 HTTP 用量队列并在旧版 CPA 回退 RESP；`http` 强制 HTTP；`resp` 强制 RESP |
-| `USAGE_RESP_QUEUE` | `usage` | RESP key 参数；当前 CPA 会忽略该值，除非上游行为变化，否则保持默认即可 |
-| `USAGE_RESP_POP_SIDE` | `right` | `right` 使用 `RPOP`；`left` 使用 `LPOP` |
-| `USAGE_BATCH_SIZE` | `100` | 每次最多弹出记录数 |
-| `USAGE_POLL_INTERVAL_MS` | `500` | 队列空闲时轮询间隔 |
-| `USAGE_QUERY_LIMIT` | `50000` | 兼容 `/usage` 最多返回的近期事件数 |
-| `USAGE_CORS_ORIGINS` | `*` | CPA 控制面板方案下允许的浏览器来源 |
-| `USAGE_RESP_TLS_SKIP_VERIFY` | `false` | RESP TLS 连接是否跳过证书校验 |
-| `PANEL_PATH` | 空 | 使用自定义 `management.html` 替代内置面板 |
+| 变量                         |                                                      默认值 | 说明                                                                                          |
+| ---------------------------- | ----------------------------------------------------------: | --------------------------------------------------------------------------------------------- |
+| `CPA_MANAGER_CONFIG`         |                                                          空 | 可选配置文件路径；为空时原生包默认使用程序同目录的 `config.json`                              |
+| `HTTP_ADDR`                  |                                             `0.0.0.0:18317` | Usage Service HTTP 监听地址                                                                   |
+| `USAGE_DB_PATH`              | Docker：`/data/usage.sqlite`；原生包：`./data/usage.sqlite` | SQLite 数据库路径                                                                             |
+| `USAGE_DATA_DIR`             |                           Docker：`/data`；原生包：`./data` | 未覆盖 `USAGE_DB_PATH` 时的数据目录                                                           |
+| `CPA_UPSTREAM_URL`           |                                                          空 | 可选 CPA 地址，用于无人值守启动                                                               |
+| `CPA_MANAGEMENT_KEY`         |                                                          空 | 可选 CPA Management Key，用于无人值守启动                                                     |
+| `CPA_MANAGEMENT_KEY_FILE`    |                           `/run/secrets/cpa_management_key` | 可选密钥文件                                                                                  |
+| `USAGE_COLLECTOR_MODE`       |                                                      `auto` | 采集方式：`auto` 优先 HTTP 用量队列并在旧版 CPA 回退 RESP；`http` 强制 HTTP；`resp` 强制 RESP |
+| `USAGE_RESP_QUEUE`           |                                                     `usage` | RESP key 参数；当前 CPA 会忽略该值，除非上游行为变化，否则保持默认即可                        |
+| `USAGE_RESP_POP_SIDE`        |                                                     `right` | `right` 使用 `RPOP`；`left` 使用 `LPOP`                                                       |
+| `USAGE_BATCH_SIZE`           |                                                       `100` | 每次最多弹出记录数                                                                            |
+| `USAGE_POLL_INTERVAL_MS`     |                                                       `500` | 队列空闲时轮询间隔                                                                            |
+| `USAGE_QUERY_LIMIT`          |                                                     `50000` | 兼容 `/usage` 最多返回的近期事件数                                                            |
+| `USAGE_CORS_ORIGINS`         |                                                         `*` | CPA 控制面板方案下允许的浏览器来源                                                            |
+| `USAGE_RESP_TLS_SKIP_VERIFY` |                                                     `false` | RESP TLS 连接是否跳过证书校验                                                                 |
+| `PANEL_PATH`                 |                                                          空 | 使用自定义 `management.html` 替代内置面板                                                     |
 
 配置优先级为：环境变量 > `config.json` > 程序默认值。配置文件中的相对路径按配置文件所在目录解析。默认生成的配置文件内容如下：
 
@@ -276,20 +276,20 @@ docker compose -f docker-compose.usage.yml up --build
 
 ## 运行时接口
 
-| 接口 | 用途 |
-|---|---|
-| `GET /health` | 基础健康检查 |
-| `GET /status` | 采集器、SQLite、事件数、错误状态 |
-| `GET /usage-service/info` | 让前端识别完整 Docker 方案 |
-| `POST /setup` | 保存 CPA 地址和 Management Key，并启动采集 |
-| `GET /v0/management/usage` | 面板兼容用量数据 |
-| `GET /v0/management/usage/export` | JSONL 导出用量事件 |
-| `POST /v0/management/usage/import` | 导入 JSONL 用量事件或旧版 JSON 快照 |
-| `GET /v0/management/model-prices` | 读取 SQLite 中保存的模型价格 |
-| `PUT /v0/management/model-prices` | 替换已保存的模型价格 |
-| `POST /v0/management/model-prices/sync` | 从 LiteLLM 价格元数据同步模型价格 |
-| `GET /models`、`GET /v1/models` | setup 后将模型列表请求反代到 CPA |
-| `/v0/management/*` | 除 usage 外反代到 CPA |
+| 接口                                    | 用途                                       |
+| --------------------------------------- | ------------------------------------------ |
+| `GET /health`                           | 基础健康检查                               |
+| `GET /status`                           | 采集器、SQLite、事件数、错误状态           |
+| `GET /usage-service/info`               | 让前端识别完整 Docker 方案                 |
+| `POST /setup`                           | 保存 CPA 地址和 Management Key，并启动采集 |
+| `GET /v0/management/usage`              | 面板兼容用量数据                           |
+| `GET /v0/management/usage/export`       | JSONL 导出用量事件                         |
+| `POST /v0/management/usage/import`      | 导入 JSONL 用量事件或旧版 JSON 快照        |
+| `GET /v0/management/model-prices`       | 读取 SQLite 中保存的模型价格               |
+| `PUT /v0/management/model-prices`       | 替换已保存的模型价格                       |
+| `POST /v0/management/model-prices/sync` | 从 LiteLLM 价格元数据同步模型价格          |
+| `GET /models`、`GET /v1/models`         | setup 后将模型列表请求反代到 CPA           |
+| `/v0/management/*`                      | 除 usage 外反代到 CPA                      |
 
 setup 后，`/status`、用量、模型价格和 `/v0/management/*` 反代接口需要使用同一个 Management Key 作为 Bearer token。
 

@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 
+const CODEX_QUOTA_REQUEST_TIMEOUT_MS = 180 * 1000;
+
 export type CodexQuotaStatus = 'available' | 'limited' | 'disabled' | 'error';
 
 export interface CodexQuotaSummary {
@@ -21,6 +23,7 @@ export interface CodexQuotaAccount {
   file: string;
   account: string;
   email: string;
+  importedAt: string;
   disabled: boolean;
   status: CodexQuotaStatus;
   statusText: string;
@@ -60,10 +63,15 @@ export interface CodexQuotaSettings {
 export const codexQuotaApi = {
   settings: () => apiClient.get<CodexQuotaSettings>('/codex-quota/settings'),
 
-  list: () => apiClient.get<CodexQuotaResponse>('/codex-quota'),
+  list: () =>
+    apiClient.get<CodexQuotaResponse>('/codex-quota', {
+      timeout: CODEX_QUOTA_REQUEST_TIMEOUT_MS,
+    }),
 
   refreshSelected: (files: string[]) =>
-    apiClient.post<CodexQuotaResponse>('/codex-quota/refresh', { files }),
+    apiClient.post<CodexQuotaResponse>('/codex-quota/refresh', { files }, {
+      timeout: CODEX_QUOTA_REQUEST_TIMEOUT_MS,
+    }),
 
   setDisabled: (file: string, disabled: boolean) =>
     apiClient.patch<{ status: 'ok'; file: string; disabled: boolean }>('/codex-quota/account', {

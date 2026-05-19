@@ -8,7 +8,63 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestLoadCodexAuthFilesIncludesImportedAt(t *testing.T) {
+	authDir := t.TempDir()
+	writeTestCodexAuth(t, authDir, "imported.json", false)
+
+	accounts, err := loadCodexAuthFiles(authDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("account count = %d, want 1", len(accounts))
+	}
+	if accounts[0].ImportedAt == "" {
+		t.Fatal("importedAt should be populated")
+	}
+	if _, err := time.ParseInLocation("2006-01-02 15:04:05", accounts[0].ImportedAt, beijingLocation()); err != nil {
+		t.Fatalf("importedAt = %q, want Beijing timestamp: %v", accounts[0].ImportedAt, err)
+	}
+}
+
+func TestFetchCodexQuotaIncludesImportedAt(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"plan_type": "free",
+			"rate_limit": {
+				"allowed": true,
+				"limit_reached": false,
+				"primary_window": {
+					"used_percent": 10,
+					"reset_at": 1770000000
+				}
+			},
+			"credits": {}
+		}`))
+	}))
+	defer upstream.Close()
+
+	previousURL := codexUsageURL
+	codexUsageURL = upstream.URL
+	t.Cleanup(func() {
+		codexUsageURL = previousURL
+	})
+
+	account := fetchCodexQuota(context.Background(), codexAuthFile{
+		File:        "imported@example.com.json",
+		Email:       "imported@example.com",
+		ImportedAt:  "2026-05-19 16:02:25",
+		AccessToken: "token",
+	})
+
+	if account.ImportedAt != "2026-05-19 16:02:25" {
+		t.Fatalf("importedAt = %q, want %q", account.ImportedAt, "2026-05-19 16:02:25")
+	}
+}
 
 func TestFetchCodexQuotaQueriesDisabledAccountsButKeepsThemDisabled(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,15 +159,17 @@ func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
 	}
 }
 
-func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndError(t *testing.T) {
+func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndAuthError(t *testing.T) {
 	authDir := t.TempDir()
 	writeTestCodexAuth(t, authDir, "limited.json", false)
 	writeTestCodexAuth(t, authDir, "error.json", false)
+	writeTestCodexAuth(t, authDir, "timeout.json", false)
 	writeTestCodexAuth(t, authDir, "available.json", false)
 
 	accounts := []codexQuotaAccount{
 		{File: "limited.json", Status: "limited", StatusText: "受限"},
 		{File: "error.json", Status: "error", StatusText: "HTTP 401", Error: "token invalidated"},
+		{File: "timeout.json", Status: "error", StatusText: "查询失败", Error: "context deadline exceeded"},
 		{File: "available.json", Status: "available", StatusText: "可用"},
 	}
 
@@ -129,14 +187,20 @@ func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndError(t *testing.T
 	if updated[1].StatusText != "已自动停用：异常" {
 		t.Fatalf("error status text = %q", updated[1].StatusText)
 	}
-	if updated[2].Disabled || updated[2].Status != "available" {
-		t.Fatalf("available account = %+v, want unchanged", updated[2])
+	if updated[2].Disabled || updated[2].Status != "error" {
+		t.Fatalf("timeout account = %+v, want unchanged error", updated[2])
+	}
+	if updated[3].Disabled || updated[3].Status != "available" {
+		t.Fatalf("available account = %+v, want unchanged", updated[3])
 	}
 	if !readDisabledFlag(t, authDir, "limited.json") {
 		t.Fatal("limited auth file should be disabled")
 	}
 	if !readDisabledFlag(t, authDir, "error.json") {
 		t.Fatal("error auth file should be disabled")
+	}
+	if readDisabledFlag(t, authDir, "timeout.json") {
+		t.Fatal("timeout auth file should stay enabled")
 	}
 	if readDisabledFlag(t, authDir, "available.json") {
 		t.Fatal("available auth file should stay enabled")

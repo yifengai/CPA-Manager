@@ -219,28 +219,38 @@
 
 .accountPoolPanel {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
 }
 
 .accountPoolHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
+
+  > div:first-child {
+    min-width: 0;
+  }
 
   h2 {
     margin: 0;
     color: var(--text-primary);
-    font-size: 15px;
-    line-height: 1.25;
+    font-size: 14px;
+    line-height: 1.15;
   }
 
   span {
-    display: inline-flex;
-    margin-top: 2px;
+    display: block;
+    max-width: 980px;
+    margin-top: 1px;
+    overflow: hidden;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   @media (max-width: 460px) {
@@ -258,14 +268,14 @@
 
   button {
     appearance: none;
-    min-height: 28px;
-    padding: 0 11px;
+    min-height: 24px;
+    padding: 0 9px;
     border: 0;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     white-space: nowrap;
   }
@@ -282,42 +292,113 @@
 
 .accountPoolMetrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(118px, 1fr));
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 1px;
 }
 
-@media (max-width: 620px) {
-  .accountPoolMetrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.accountPoolRule {
+  margin-top: -1px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.todayUsagePanel {
+  display: grid;
+  gap: 5px;
+}
+
+.todayUsageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+
+  h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 620px) {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+
+    span {
+      text-align: left;
+      white-space: normal;
+    }
   }
 }
 
-@media (max-width: 420px) {
-  .accountPoolMetrics {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
+.todayUsageMetrics {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(92px, 1fr));
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 1px;
+
+  .accountPoolMetricCard {
+    min-height: 48px;
+    gap: 3px;
+    padding: 5px 7px;
+
+    span {
+      font-size: 10.5px;
+    }
+
+    strong {
+      font-size: 18px;
+    }
+
+    small {
+      font-size: 10.5px;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
   }
 }
 
 .accountPoolMetricCard {
   display: grid;
   min-width: 0;
-  min-height: 66px;
+  min-height: 54px;
   align-content: center;
-  gap: 5px;
-  padding: 8px 10px;
+  gap: 3px;
+  padding: 6px 8px;
   border: 1px solid var(--border-color);
   border-radius: $radius-md;
   background: var(--bg-primary);
 
   span {
     color: var(--text-tertiary);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
   }
 
   strong {
     color: var(--text-primary);
-    font-size: 23px;
+    font-size: 20px;
     line-height: 1;
   }
 
@@ -325,7 +406,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -355,6 +436,69 @@
 
   strong {
     color: var(--warning-color);
+  }
+}
+
+.accountPoolMetricUsage {
+  border-color: color-mix(in srgb, var(--info-color) 38%, var(--border-color));
+  background: color-mix(in srgb, var(--info-color) 7%, var(--bg-primary));
+
+  strong {
+    color: var(--info-color);
+  }
+}
+
+.accountPoolMetricSuccess {
+  border-color: color-mix(in srgb, var(--success-color) 34%, var(--border-color));
+  background: color-mix(in srgb, var(--success-color) 6%, var(--bg-primary));
+
+  strong {
+    color: var(--success-color);
+  }
+}
+
+.accountPoolMetricFailure {
+  border-color: color-mix(in srgb, var(--danger-color) 34%, var(--border-color));
+  background: color-mix(in srgb, var(--danger-color) 6%, var(--bg-primary));
+
+  strong {
+    color: var(--danger-color);
+  }
+}
+
+.accountPoolMetricCost {
+  border-color: color-mix(in srgb, var(--warning-color) 34%, var(--border-color));
+  background: color-mix(in srgb, var(--warning-color) 7%, var(--bg-primary));
+
+  strong {
+    color: var(--warning-color);
+  }
+}
+
+.accountPoolMetricInput {
+  border-color: color-mix(in srgb, var(--primary-color) 32%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 5%, var(--bg-primary));
+
+  strong {
+    color: var(--primary-color);
+  }
+}
+
+.accountPoolMetricOutput {
+  border-color: color-mix(in srgb, var(--warning-color) 34%, var(--border-color));
+  background: color-mix(in srgb, var(--warning-color) 7%, var(--bg-primary));
+
+  strong {
+    color: var(--warning-color);
+  }
+}
+
+.accountPoolMetricCache {
+  border-color: color-mix(in srgb, var(--danger-color) 28%, var(--border-color));
+  background: color-mix(in srgb, var(--danger-color) 6%, var(--bg-primary));
+
+  strong {
+    color: var(--danger-color);
   }
 }
 
@@ -619,10 +763,9 @@
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(112px, 140px) minmax(126px, 160px) minmax(
-      150px,
-      190px
-    );
+  grid-template-columns:
+    minmax(220px, 1fr) minmax(112px, 142px) minmax(112px, 142px) minmax(126px, 160px)
+    minmax(150px, 190px);
   gap: 8px;
   align-items: center;
   padding: 8px 10px;
@@ -821,8 +964,21 @@
   flex-wrap: wrap;
 }
 
+.accountTitleRow {
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 14px;
+}
+
 .accountMetaRow {
   gap: 6px;
+}
+
+.accountIdentity {
+  display: inline-flex;
+  min-width: max-content;
+  align-items: center;
+  gap: 8px;
 }
 
 .planBadge {
@@ -836,13 +992,9 @@
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
-  text-transform: uppercase;
 }
 
 .accountTitleRow strong {
-  overflow: hidden;
-  max-width: 360px;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -887,9 +1039,11 @@
   background: var(--success-color);
 }
 
-.statusPill,
+.accountSwitchPill,
+.businessPill,
 .remainingPill,
-.healthPill {
+.healthPill,
+.statusPill {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -898,6 +1052,37 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+}
+
+.accountSwitchPill {
+  flex: 0 0 auto;
+}
+
+.switch_enabled {
+  border: 1px solid color-mix(in srgb, var(--success-color) 28%, transparent);
+  background: color-mix(in srgb, var(--success-color) 8%, transparent);
+  color: var(--success-color);
+}
+
+.switch_disabled {
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+  color: var(--text-secondary);
+}
+
+.business_callable {
+  background: rgba($success-color, 0.12);
+  color: var(--success-color);
+}
+
+.business_limited,
+.business_error {
+  background: rgba($error-color, 0.12);
+  color: var(--danger-color);
+}
+
+.business_unknown {
+  background: rgba($warning-color, 0.14);
+  color: var(--warning-color);
 }
 
 .statusAvailable,

@@ -4,7 +4,13 @@ import {
   buildAccountPoolBalance,
   buildPriorityAccounts,
   buildRefreshReport,
+  buildTodayUsageSummary,
   buildTodayRestoredHistory,
+  formatAccountSurvivalDays,
+  getAccountSurvivalMs,
+  getAccountSurvivalBucketKey,
+  getAccountListDisplay,
+  getCodexQuotaBusinessStatus,
   getAccountHealth,
   getRecoveryDayBucketKey,
   isCodexQuotaUnavailable,
@@ -15,6 +21,7 @@ const createAccount = (overrides: Partial<CodexQuotaAccount> = {}): CodexQuotaAc
   file: overrides.file ?? `${overrides.account ?? 'account@example.com'}.json`,
   account: overrides.account ?? 'account@example.com',
   email: overrides.email ?? overrides.account ?? 'account@example.com',
+  importedAt: overrides.importedAt ?? '2026-05-13 07:32:08',
   disabled: overrides.disabled ?? false,
   status: overrides.status ?? 'available',
   statusText: overrides.statusText ?? '可用',
@@ -37,7 +44,7 @@ const createAccount = (overrides: Partial<CodexQuotaAccount> = {}): CodexQuotaAc
 });
 
 describe('codex quota dashboard state', () => {
-  it('estimates account pool balance from a 4M token and 4 dollar full-cycle baseline', () => {
+  it('estimates account pool balance from a 4M token and GPT-5.5 input price baseline', () => {
     const accounts = [
       createAccount({
         account: 'usable-a@example.com',
@@ -65,10 +72,10 @@ describe('codex quota dashboard state', () => {
     ];
 
     expect(buildAccountPoolBalance(accounts, 'available')).toMatchObject({
-      accountCount: 3,
+      accountCount: 2,
       estimatedRemainingTokens: 3_000_000,
       estimatedCalls: 26,
-      estimatedValueUsd: 3,
+      estimatedValueUsd: 15,
       measurableAccounts: 2,
     });
 
@@ -76,7 +83,7 @@ describe('codex quota dashboard state', () => {
       accountCount: 5,
       estimatedRemainingTokens: 10_600_000,
       estimatedCalls: 90,
-      estimatedValueUsd: 10.6,
+      estimatedValueUsd: 53,
       measurableAccounts: 4,
     });
   });
@@ -104,6 +111,158 @@ describe('codex quota dashboard state', () => {
     });
   });
 
+  it('formats account survival days from the first import time', () => {
+    const now = Date.parse('2026-05-19T16:30:00+08:00');
+
+    expect(getAccountSurvivalMs('2026-05-19 16:02:25', now)).toBe(1_655_000);
+    expect(formatAccountSurvivalDays('2026-05-19 16:02:25', now)).toBe('0.1天');
+    expect(formatAccountSurvivalDays('2026-05-19 09:18:00', now)).toBe('0.3天');
+    expect(formatAccountSurvivalDays('2026-05-18 15:00:00', now)).toBe('1天');
+    expect(formatAccountSurvivalDays('2026-05-12 15:00:00', now)).toBe('7天');
+    expect(formatAccountSurvivalDays('', now)).toBe('-');
+    expect(formatAccountSurvivalDays(undefined, now)).toBe('-');
+    expect(getAccountSurvivalMs(undefined, now)).toBeNull();
+  });
+
+  it('groups account survival by operational age buckets', () => {
+    const now = Date.parse('2026-05-19T16:30:00+08:00');
+
+    expect(getAccountSurvivalBucketKey('2026-05-19 09:18:00', now)).toBe('lt1');
+    expect(getAccountSurvivalBucketKey('2026-05-18 16:30:00', now)).toBe('day1To3');
+    expect(getAccountSurvivalBucketKey('2026-05-16 16:30:00', now)).toBe('day3To7');
+    expect(getAccountSurvivalBucketKey('2026-05-12 16:30:00', now)).toBe('day7To14');
+    expect(getAccountSurvivalBucketKey('2026-05-05 16:30:00', now)).toBe('day14Plus');
+    expect(getAccountSurvivalBucketKey('', now)).toBe('unknown');
+  });
+
+  it('builds concise account-list labels from switch and business status', () => {
+    expect(getAccountListDisplay(createAccount())).toMatchObject({
+      switchLabel: '启用',
+      switchTone: 'enabled',
+      businessLabel: '可调用',
+      businessTone: 'callable',
+      reason: '',
+    });
+    expect(
+      getAccountListDisplay(
+        createAccount({
+          disabled: true,
+          status: 'disabled',
+          statusText: '已停用',
+        })
+      )
+    ).toMatchObject({
+      switchLabel: '已停用',
+      switchTone: 'disabled',
+      businessLabel: '可调用',
+      businessTone: 'callable',
+      reason: '已停用，不进入调用池',
+    });
+    expect(
+      getAccountListDisplay(
+        createAccount({
+          status: 'limited',
+          limitReached: true,
+          currentRemainingPercent: 0,
+        })
+      )
+    ).toMatchObject({
+      businessLabel: '受限',
+      businessTone: 'limited',
+      reason: '账号已达调用上限',
+    });
+  });
+
+  it('summarizes Beijing-day usage tokens and estimated cost', () => {
+    const usage = {
+      apis: {
+        'POST /v1/chat/completions': {
+          models: {
+            'gpt-5': {
+              details: [
+                {
+                  timestamp: '2026-05-18T09:00:00+08:00',
+                  source: 'account-a',
+                  auth_index: 1,
+                  failed: false,
+                  latency_ms: 26_000,
+                  tokens: {
+                    input_tokens: 2_000_000,
+                    cached_tokens: 500_000,
+                    output_tokens: 100_000,
+                    total_tokens: 2_600_000,
+                  },
+                },
+                {
+                  timestamp: '2026-05-17T23:59:59+08:00',
+                  source: 'account-a',
+                  auth_index: 1,
+                  failed: false,
+                  tokens: {
+                    input_tokens: 1_000_000,
+                    output_tokens: 100_000,
+                    total_tokens: 1_100_000,
+                  },
+                },
+              ],
+            },
+          },
+        },
+        'POST /v1/responses': {
+          models: {
+            'gpt-5-mini': {
+              details: [
+                {
+                  timestamp: '2026-05-18T15:30:00+08:00',
+                  source: 'account-b',
+                  auth_index: 2,
+                  failed: true,
+                  latency_ms: 28_000,
+                  tokens: {
+                    input_tokens: 100,
+                    output_tokens: 20,
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    const summary = buildTodayUsageSummary(
+      usage,
+      {
+        'gpt-5': {
+          prompt: 1,
+          completion: 10,
+          cache: 0.1,
+        },
+      },
+      Date.parse('2026-05-18T18:00:00+08:00')
+    );
+
+    expect(summary).toMatchObject({
+      hasUsageData: true,
+      requestCount: 2,
+      successCount: 1,
+      failedCount: 1,
+      accountCount: 2,
+      pricedRequestCount: 1,
+      successRate: 50,
+      averageLatencyMs: 27_000,
+      totalTokens: 2_600_120,
+      inputTokens: 2_000_100,
+      outputTokens: 100_020,
+      reasoningTokens: 0,
+      cachedTokens: 500_000,
+      estimatedCostUsd: 2.55,
+    });
+    expect(summary.inputShare).toBeCloseTo(76.9233, 3);
+    expect(summary.outputShare).toBeCloseTo(3.8467, 3);
+    expect(summary.cacheHitRate).toBeCloseTo(24.9987, 3);
+  });
+
   it('classifies token invalidation as a login action instead of a generic error', () => {
     const account = createAccount({
       status: 'error',
@@ -117,6 +276,38 @@ describe('codex quota dashboard state', () => {
       tone: 'danger',
       rank: 1,
     });
+  });
+
+  it('classifies business status independently from the local disabled switch', () => {
+    expect(
+      getCodexQuotaBusinessStatus(
+        createAccount({ disabled: true, status: 'disabled', currentRemainingPercent: 100 })
+      )
+    ).toBe('callable');
+    expect(
+      getCodexQuotaBusinessStatus(
+        createAccount({ disabled: true, status: 'disabled', currentRemainingPercent: 0 })
+      )
+    ).toBe('limited');
+    expect(
+      getCodexQuotaBusinessStatus(
+        createAccount({
+          disabled: true,
+          status: 'error',
+          statusText: 'HTTP 401',
+          error: 'token_invalidated',
+        })
+      )
+    ).toBe('error');
+    expect(
+      getCodexQuotaBusinessStatus(
+        createAccount({
+          status: 'error',
+          statusText: '查询失败',
+          error: 'context deadline exceeded',
+        })
+      )
+    ).toBe('unknown');
   });
 
   it('prioritizes accounts that need action before low-balance observation accounts', () => {
@@ -169,7 +360,7 @@ describe('codex quota dashboard state', () => {
     });
   });
 
-  it('treats only non-disabled query failures as unavailable accounts', () => {
+  it('treats auth failures as unavailable even when the local switch is disabled', () => {
     expect(
       isCodexQuotaUnavailable(
         createAccount({ status: 'error', statusText: 'HTTP 401', error: 'token_invalidated' })
@@ -186,7 +377,7 @@ describe('codex quota dashboard state', () => {
       isCodexQuotaUnavailable(
         createAccount({ disabled: true, status: 'disabled', error: 'HTTP 401' })
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps accounts in today restored history after the reset time rolls to the next window', () => {

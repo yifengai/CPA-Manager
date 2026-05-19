@@ -33,16 +33,21 @@ export interface UseUsageDataReturn {
   syncModelPrices: (models?: string[]) => Promise<ModelPriceSyncResponse>;
   exportUsage: () => Promise<UsageExportResponse>;
   importUsage: (file: File) => Promise<UsageImportResponse>;
-  loadUsage: () => Promise<void>;
+  loadUsage: () => Promise<UsagePayload | null>;
 }
 
-export function useUsageData(): UseUsageDataReturn {
+export interface UseUsageDataOptions {
+  autoLoadUsage?: boolean;
+}
+
+export function useUsageData(options: UseUsageDataOptions = {}): UseUsageDataReturn {
+  const { autoLoadUsage = true } = options;
   const apiBase = useAuthStore((state) => state.apiBase);
   const managementKey = useAuthStore((state) => state.managementKey);
   const usageServiceEnabled = useUsageServiceStore((state) => state.enabled);
   const usageServiceBase = useUsageServiceStore((state) => state.serviceBase);
   const [usage, setUsage] = useState<UsagePayload | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(autoLoadUsage);
   const [error, setError] = useState('');
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [modelPrices, setModelPricesState] = useState<Record<string, ModelPrice>>({});
@@ -151,12 +156,14 @@ export function useUsageData(): UseUsageDataReturn {
         usageServiceEnabled && usageServiceBase
           ? await usageServiceApi.getUsage(usageServiceBase, managementKey)
           : await apiClient.get<UsagePayload>('/usage');
-      if (requestIdRef.current !== requestId) return;
+      if (requestIdRef.current !== requestId) return null;
       setUsage(payload ?? null);
       setLastRefreshedAt(new Date());
+      return payload ?? null;
     } catch (err) {
-      if (requestIdRef.current !== requestId) return;
+      if (requestIdRef.current !== requestId) return null;
       setError(err instanceof Error ? err.message : String(err));
+      return null;
     } finally {
       if (requestIdRef.current === requestId) {
         setLoading(false);
@@ -166,8 +173,10 @@ export function useUsageData(): UseUsageDataReturn {
 
   useEffect(() => {
     void loadModelPricesFromStorage();
-    void loadUsage();
-  }, [loadModelPricesFromStorage, loadUsage]);
+    if (autoLoadUsage) {
+      void loadUsage();
+    }
+  }, [autoLoadUsage, loadModelPricesFromStorage, loadUsage]);
 
   const setModelPrices = useCallback(async (prices: Record<string, ModelPrice>) => {
     setModelPricesState(prices);

@@ -102,7 +102,7 @@ func Load() (Config, error) {
 		CORSOrigins:               splitCSV(env("USAGE_CORS_ORIGINS", strings.Join(sliceFallback(cfgFile.CORSOrigins, []string{"*"}), ","))),
 		TLSSkipVerify:             envBool("USAGE_RESP_TLS_SKIP_VERIFY", cfgFile.TLSSkipVerify),
 		CodexQuotaEstimateTokens:  envInt("CODEX_QUOTA_ESTIMATE_TOKENS", intFallback(cfgFile.CodexQuotaEstimateTokens, 4000000)),
-		CodexQuotaEstimateCostUSD: envFloat("CODEX_QUOTA_ESTIMATE_COST_USD", floatFallback(cfgFile.CodexQuotaEstimateCostUSD, 4)),
+		CodexQuotaEstimateCostUSD: envFloat("CODEX_QUOTA_ESTIMATE_COST_USD", floatFallback(cfgFile.CodexQuotaEstimateCostUSD, 20)),
 		CodexQuotaEstimateCalls:   envInt("CODEX_QUOTA_ESTIMATE_CALLS", intFallback(cfgFile.CodexQuotaEstimateCalls, 34)),
 	}, nil
 }
