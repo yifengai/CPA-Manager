@@ -36,6 +36,7 @@ type requestLogTask struct {
 	Title        string              `json:"title"`
 	UpdatedAt    string              `json:"updatedAt"`
 	RequestCount int                 `json:"requestCount"`
+	TotalTokens  int64               `json:"totalTokens"`
 	Requests     []requestLogSummary `json:"requests"`
 }
 
@@ -794,6 +795,7 @@ func groupRequestLogTasks(summaries []requestLogSummary) []requestLogTask {
 		}
 		tasks[index].Requests = append(tasks[index].Requests, summary)
 		tasks[index].RequestCount = len(tasks[index].Requests)
+		tasks[index].TotalTokens += summary.TotalTokens
 		if summary.UpdatedAt > tasks[index].UpdatedAt {
 			tasks[index].UpdatedAt = summary.UpdatedAt
 		}

@@ -91,6 +91,7 @@ export interface RequestLogTask {
   title: string;
   updatedAt: string;
   requestCount: number;
+  totalTokens: number;
   requests: RequestLogSummary[];
 }
 
@@ -315,7 +316,7 @@ export const usageServiceApi = {
         `/v0/management/request-logs/tasks?limit=${encodeURIComponent(String(limit))}`
       ),
       {
-        timeout: USAGE_SERVICE_TIMEOUT_MS,
+        timeout: USAGE_SERVICE_TRANSFER_TIMEOUT_MS,
         headers: authHeaders(managementKey),
       }
     );
@@ -326,7 +327,7 @@ export const usageServiceApi = {
     const response = await axios.get<RequestLogTrace>(
       buildUrl(base, '/v0/management/request-logs/latest'),
       {
-        timeout: USAGE_SERVICE_TIMEOUT_MS,
+        timeout: USAGE_SERVICE_TRANSFER_TIMEOUT_MS,
         headers: authHeaders(managementKey),
       }
     );
@@ -341,7 +342,7 @@ export const usageServiceApi = {
     const response = await axios.get<RequestLogTrace>(
       buildUrl(base, `/v0/management/request-logs/${encodeURIComponent(requestId)}`),
       {
-        timeout: USAGE_SERVICE_TIMEOUT_MS,
+        timeout: USAGE_SERVICE_TRANSFER_TIMEOUT_MS,
         headers: authHeaders(managementKey),
       }
     );

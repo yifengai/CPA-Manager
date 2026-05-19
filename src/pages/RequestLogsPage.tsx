@@ -34,7 +34,7 @@ import styles from './RequestLogsPage.module.scss';
 type DetailTab = 'routing' | 'responses' | 'upstream' | 'raw';
 
 const AUTO_REFRESH_MS = 10000;
-const REQUEST_LOG_LIMIT = 180;
+const REQUEST_LOG_LIMIT = 300;
 
 const FLOW_STEPS = [
   {
@@ -88,6 +88,20 @@ const truncateText = (text: string, maxLength: number) => {
   const trimmed = text.trim();
   if (Array.from(trimmed).length <= maxLength) return trimmed;
   return `${Array.from(trimmed).slice(0, maxLength).join('')}...`;
+};
+
+const taskTokenTotal = (task: RequestLogTask) =>
+  task.totalTokens || task.requests.reduce((sum, request) => sum + (request.totalTokens || 0), 0);
+
+const formatCompactTokens = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 1 : 2)}M`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(value >= 10_000 ? 1 : 2)}K`;
+  }
+  return numberFormatter.format(Math.round(value));
 };
 
 function RequestLogsMetric({ label, value, meta }: { label: string; value: string; meta: string }) {
@@ -418,7 +432,14 @@ export function RequestLogsPage() {
             textIncludes(request.userPreview, query) ||
             textIncludes(request.finalPreview, query)
         );
-        return requests.length ? { ...task, requests, requestCount: requests.length } : null;
+        return requests.length
+          ? {
+              ...task,
+              requests,
+              requestCount: requests.length,
+              totalTokens: requests.reduce((sum, request) => sum + (request.totalTokens || 0), 0),
+            }
+          : null;
       })
       .filter((task): task is RequestLogTask => Boolean(task));
   }, [listPayload?.tasks, searchQuery]);
@@ -579,7 +600,11 @@ export function RequestLogsPage() {
               任务历史
             </div>
           }
-          extra={<span className={styles.panelMeta}>{listPayload?.total ?? 0} 条</span>}
+          extra={
+            <span className={styles.panelMeta}>
+              {filteredTasks.length} 个任务 · {listPayload?.total ?? 0} 条
+            </span>
+          }
         >
           <Input
             value={searchQuery}
@@ -599,6 +624,7 @@ export function RequestLogsPage() {
                 const completedCount = task.requests.filter((request) => request.completed).length;
                 const errorCount = task.requests.filter((request) => request.hasError).length;
                 const activeCount = task.requests.length - completedCount - errorCount;
+                const tokens = taskTokenTotal(task);
                 const isActive = selectedTask?.id === task.id;
                 return (
                   <button
@@ -625,6 +651,7 @@ export function RequestLogsPage() {
                     </span>
                     <span className={styles.taskItemTime}>{task.updatedAt || '-'}</span>
                     <span className={styles.taskItemMeta}>
+                      <em className={styles.token}>Tokens {formatCompactTokens(tokens)}</em>
                       <em className={styles.good}>已完成 {completedCount}</em>
                       <em className={styles.warn}>进行中 {activeCount}</em>
                       <em className={styles.bad}>异常 {errorCount}</em>
@@ -658,7 +685,8 @@ export function RequestLogsPage() {
           extra={
             selectedTask ? (
               <span className={styles.panelMeta}>
-                {selectedTask.requests.length} 条 · {selectedTask.updatedAt || '-'}
+                {selectedTask.requests.length} 条 · Tokens{' '}
+                {formatCompactTokens(taskTokenTotal(selectedTask))} · {selectedTask.updatedAt || '-'}
               </span>
             ) : (
               <span className={styles.panelMeta}>请选择任务</span>

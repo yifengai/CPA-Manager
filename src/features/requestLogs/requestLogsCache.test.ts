@@ -35,6 +35,7 @@ const snapshot: RequestLogsCacheSnapshot = {
         title: '测试任务',
         updatedAt: '2026-05-20 10:00:01',
         requestCount: 1,
+        totalTokens: 120,
         requests: [
           {
             requestId: 'req-1',

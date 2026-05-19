@@ -351,6 +351,11 @@
     font-style: normal;
     font-weight: 700;
   }
+
+  .token {
+    background: color-mix(in srgb, var(--primary-color) 10%, var(--bg-secondary));
+    color: var(--primary-color);
+  }
 }
 
 .requestListHeader {

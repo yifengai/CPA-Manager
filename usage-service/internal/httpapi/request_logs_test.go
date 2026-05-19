@@ -65,6 +65,9 @@ func TestRequestLogsEndpointGroupsTasksAndReturnsDetail(t *testing.T) {
 	if list.Total != 2 || len(list.Tasks) != 1 || list.Tasks[0].RequestCount != 2 {
 		t.Fatalf("list = %#v", list)
 	}
+	if list.Tasks[0].TotalTokens != 246 {
+		t.Fatalf("task total tokens = %d, want 246", list.Tasks[0].TotalTokens)
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/v0/management/request-logs/deadbeef", nil)
 	rr = httptest.NewRecorder()
