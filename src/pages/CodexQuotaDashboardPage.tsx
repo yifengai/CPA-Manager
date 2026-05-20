@@ -66,7 +66,7 @@ const statusOptions = [
 const sortOptions = [
   { value: 'remaining-asc', label: '剩余额度从低到高' },
   { value: 'remaining-desc', label: '剩余额度从高到低' },
-  { value: 'reset-asc', label: '重置时间从近到远' },
+  { value: 'reset-asc', label: '周限额重置从近到远' },
   { value: 'survival-asc', label: '存活时间从短到长' },
   { value: 'survival-desc', label: '存活时间从长到短' },
   { value: 'account-asc', label: '账号名称 A-Z' },
@@ -1098,7 +1098,7 @@ export function CodexQuotaDashboardPage() {
         <div>
           <h1 className={styles.pageTitle}>Codex账号余量</h1>
           <p className={styles.description}>
-            统一查看账号可用状态、周限额剩余额度、重置时间，并直接启用、停用或归档删除账号。
+            统一查看账号可用状态、周限额剩余额度、周限额重置，并直接启用、停用或归档删除账号。
           </p>
         </div>
         <div className={styles.refreshGroup}>
@@ -1338,7 +1338,7 @@ export function CodexQuotaDashboardPage() {
           </div>
         </div>
         <div className={styles.filterRow}>
-          <h2>重置时间：</h2>
+          <h2>周限额重置：</h2>
           <div className={styles.filterButtonGroup}>
             {recoveryViews.map((view) => (
               <button
