@@ -33,6 +33,7 @@ export interface AccountListDisplay {
   businessLabel: string;
   businessTone: CodexQuotaBusinessStatus;
   reason: string;
+  detail: string;
 }
 
 export interface TodayRestoredAccount {
@@ -226,6 +227,55 @@ export const buildAccountPoolBalance = (
 const quotaDiagnosticText = (account: CodexQuotaAccount) =>
   `${account.statusText} ${account.error}`.toLowerCase();
 
+const firstText = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+};
+
+const truncateDetail = (value: string, maxLength = 180) => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
+};
+
+const readRecord = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+export const normalizeQuotaErrorDetail = (account: CodexQuotaAccount) => {
+  const statusText = account.statusText.trim();
+  const rawError = account.error.trim();
+  if (!statusText && !rawError) return '';
+
+  const parts: string[] = [];
+  if (statusText) parts.push(statusText);
+
+  if (!rawError) return parts.join(' · ');
+
+  try {
+    const parsed = readRecord(JSON.parse(rawError));
+    const errorObject = readRecord(parsed?.error) ?? parsed;
+    const status = firstText(parsed?.status, errorObject?.status);
+    const code = firstText(errorObject?.code, parsed?.code);
+    const type = firstText(errorObject?.type, parsed?.type);
+    const message = firstText(errorObject?.message, parsed?.message);
+
+    if (status && !parts.some((part) => part.includes(status))) parts.push(`HTTP ${status}`);
+    if (code) parts.push(`code=${code}`);
+    if (type) parts.push(`type=${type}`);
+    if (message) parts.push(message);
+
+    return truncateDetail(parts.join(' · '));
+  } catch {
+    parts.push(rawError);
+    return truncateDetail(parts.join(' · '));
+  }
+};
+
 const isAuthQuotaError = (account: CodexQuotaAccount) => {
   const text = quotaDiagnosticText(account);
   return (
@@ -294,6 +344,7 @@ export const getAccountListDisplay = (account: CodexQuotaAccount): AccountListDi
   const businessStatus = getCodexQuotaBusinessStatus(account);
   const switchDisabled = account.disabled || account.status === 'disabled';
   const reason = normalizeQuotaErrorReason(account);
+  const detail = normalizeQuotaErrorDetail(account);
   const businessLabels: Record<CodexQuotaBusinessStatus, string> = {
     callable: '可调用',
     limited: '受限',
@@ -302,7 +353,7 @@ export const getAccountListDisplay = (account: CodexQuotaAccount): AccountListDi
   };
   const fallbackReasons: Record<CodexQuotaBusinessStatus, string> = {
     callable: '',
-    limited: '当前周期已受限',
+    limited: '周限额已受限',
     error: '账号不可用',
     unknown: '余量数据不完整',
   };
@@ -318,6 +369,7 @@ export const getAccountListDisplay = (account: CodexQuotaAccount): AccountListDi
         : reason === '-'
           ? fallbackReasons[businessStatus]
           : reason,
+    detail,
   };
 };
 

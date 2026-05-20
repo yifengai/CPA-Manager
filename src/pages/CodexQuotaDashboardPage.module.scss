@@ -682,6 +682,17 @@
   white-space: nowrap;
 }
 
+.accountReasonDetail {
+  display: block;
+  max-width: 620px;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .metricStack {
   display: grid;
   gap: 4px;

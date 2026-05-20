@@ -1542,6 +1542,14 @@ export function CodexQuotaDashboardPage() {
                             </span>
                             {accountDisplay.reason ? <small>{accountDisplay.reason}</small> : null}
                           </div>
+                          {accountDisplay.detail && accountDisplay.businessTone !== 'callable' ? (
+                            <div
+                              className={styles.accountReasonDetail}
+                              title={accountDisplay.detail}
+                            >
+                              错误返回：{accountDisplay.detail}
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                       <td>

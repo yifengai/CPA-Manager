@@ -11,6 +11,7 @@ import {
   getAccountListDisplay,
   getCodexQuotaBusinessStatus,
   getRecoveryDayBucketKey,
+  normalizeQuotaErrorDetail,
   normalizeQuotaErrorReason,
 } from './dashboardState';
 
@@ -300,6 +301,27 @@ describe('codex quota dashboard state', () => {
     });
 
     expect(normalizeQuotaErrorReason(account)).toBe('Token已失效');
+  });
+
+  it('extracts detailed upstream error fields for account list diagnostics', () => {
+    const account = createAccount({
+      status: 'error',
+      statusText: 'HTTP 401',
+      error: JSON.stringify({
+        error: {
+          message: 'Your authentication token has been invalidated. Please try signing in again.',
+          type: 'invalid_request_error',
+          code: 'token_invalidated',
+        },
+        status: 401,
+      }),
+    });
+
+    expect(normalizeQuotaErrorDetail(account)).toContain('HTTP 401');
+    expect(normalizeQuotaErrorDetail(account)).toContain('code=token_invalidated');
+    expect(getAccountListDisplay(account).detail).toContain(
+      'Your authentication token has been invalidated'
+    );
   });
 
   it('classifies business status independently from the local disabled switch', () => {
