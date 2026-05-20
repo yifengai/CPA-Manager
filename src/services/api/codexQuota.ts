@@ -54,6 +54,30 @@ export interface ClearFailedUsageResponse {
   deleted: number;
 }
 
+export interface CodexQuotaProtectionResult {
+  file: string;
+  label: string;
+  action: 'protected' | 'already_disabled' | 'observe' | 'keep' | 'error' | 'would_protect';
+  reason: string;
+  failures: number;
+  consecutiveFailures: number;
+  lastSeenAt: string;
+  lastFailureAt: string;
+  failureTypes: Record<string, number>;
+}
+
+export interface CodexQuotaProtectionResponse {
+  generatedAt: string;
+  logDir: string;
+  scannedRequests: number;
+  matchedAccounts: number;
+  protectionCount: number;
+  alreadyDisabled: number;
+  observationCount: number;
+  dryRun: boolean;
+  results: CodexQuotaProtectionResult[];
+}
+
 export interface CodexQuotaSettings {
   accountCycleTokens: number;
   accountCycleCostUsd: number;
@@ -85,4 +109,9 @@ export const codexQuotaApi = {
     }),
 
   clearFailedUsage: () => apiClient.delete<ClearFailedUsageResponse>('/usage/failed'),
+
+  protectAccountPool: () =>
+    apiClient.post<CodexQuotaProtectionResponse>('/codex-quota/protect', undefined, {
+      timeout: CODEX_QUOTA_REQUEST_TIMEOUT_MS,
+    }),
 };

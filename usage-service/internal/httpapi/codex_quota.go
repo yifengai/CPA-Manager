@@ -126,6 +126,8 @@ func (s *Server) handleCodexQuota(w http.ResponseWriter, r *http.Request) {
 		s.handleCodexQuotaList(w, r)
 	case path == "/v0/management/codex-quota/refresh" && r.Method == http.MethodPost:
 		s.handleCodexQuotaRefresh(w, r)
+	case path == "/v0/management/codex-quota/protect" && r.Method == http.MethodPost:
+		s.handleCodexQuotaProtect(w, r)
 	case path == "/v0/management/codex-quota/account" && r.Method == http.MethodPatch:
 		s.handleCodexQuotaAccountPatch(w, r)
 	case path == "/v0/management/codex-quota/account" && r.Method == http.MethodDelete:
