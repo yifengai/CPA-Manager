@@ -37,7 +37,7 @@ type SortMode =
   | 'survival-asc'
   | 'survival-desc'
   | 'account-asc';
-type QuotaBucketKey = 'zero' | 'low' | 'mid' | 'healthy' | 'high' | 'full';
+type QuotaBucketKey = 'zero' | 'veryLow' | 'low' | 'mid' | 'healthy' | 'high' | 'full';
 type QuickFilter =
   | 'all'
   | CodexQuotaBusinessStatus
@@ -91,7 +91,8 @@ const recoveryBuckets: Array<{ key: RecoveryDayBucketKey; label: string }> = [
 
 const quotaBucketDefinitions: Array<{ key: QuotaBucketKey; label: string }> = [
   { key: 'zero', label: '0%' },
-  { key: 'low', label: '1-20%' },
+  { key: 'veryLow', label: '1-5%' },
+  { key: 'low', label: '6-20%' },
   { key: 'mid', label: '21-50%' },
   { key: 'healthy', label: '51-80%' },
   { key: 'high', label: '81-90%' },
@@ -178,6 +179,7 @@ const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
   const value = account.currentRemainingPercent;
   if (typeof value !== 'number') return null;
   if (value === 0) return 'zero';
+  if (value <= 5) return 'veryLow';
   if (value <= 20) return 'low';
   if (value <= 50) return 'mid';
   if (value <= 80) return 'healthy';
@@ -243,7 +245,8 @@ const matchesQuickFilter = (
 const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['summary'] => {
   const buckets = [
     { label: '0%', count: 0 },
-    { label: '1-20%', count: 0 },
+    { label: '1-5%', count: 0 },
+    { label: '6-20%', count: 0 },
     { label: '21-50%', count: 0 },
     { label: '51-80%', count: 0 },
     { label: '81-90%', count: 0 },
@@ -292,11 +295,12 @@ const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['
     if (value <= 10) summary.critical += 1;
     if (value <= 20) summary.low += 1;
     if (value === 0) buckets[0].count += 1;
-    else if (value <= 20) buckets[1].count += 1;
-    else if (value <= 50) buckets[2].count += 1;
-    else if (value <= 80) buckets[3].count += 1;
-    else if (value <= 90) buckets[4].count += 1;
-    else buckets[5].count += 1;
+    else if (value <= 5) buckets[1].count += 1;
+    else if (value <= 20) buckets[2].count += 1;
+    else if (value <= 50) buckets[3].count += 1;
+    else if (value <= 80) buckets[4].count += 1;
+    else if (value <= 90) buckets[5].count += 1;
+    else buckets[6].count += 1;
   });
 
   if (values.length > 0) {
@@ -904,6 +908,7 @@ export function CodexQuotaDashboardPage() {
   const quotaBucketCounts = useMemo(() => {
     const counts: Record<QuotaBucketKey, number> = {
       zero: 0,
+      veryLow: 0,
       low: 0,
       mid: 0,
       healthy: 0,

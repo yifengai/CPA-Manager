@@ -428,6 +428,11 @@ func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAc
 		}
 		account.Disabled = true
 		account.Status = "disabled"
+		if isLowRemainingCodexQuotaAccount(*account) && originalStatus != "limited" {
+			account.StatusText = "已自动停用：低余量"
+			account.Error = "余量低于等于5%，默认停用"
+			continue
+		}
 		if originalStatus == "limited" {
 			account.StatusText = "已自动停用：受限"
 		} else {
@@ -443,6 +448,9 @@ func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAc
 func shouldAutoDisableCodexQuotaAccount(account codexQuotaAccount) bool {
 	if account.Disabled {
 		return false
+	}
+	if isLowRemainingCodexQuotaAccount(account) {
+		return true
 	}
 	if account.Status == "limited" {
 		return true
@@ -461,6 +469,10 @@ func shouldAutoDisableCodexQuotaAccount(account codexQuotaAccount) bool {
 		strings.Contains(text, "unauthorized") ||
 		strings.Contains(text, "http 401") ||
 		strings.Contains(text, "http 403")
+}
+
+func isLowRemainingCodexQuotaAccount(account codexQuotaAccount) bool {
+	return account.CurrentRemainingPercent != nil && *account.CurrentRemainingPercent <= 5
 }
 
 func applyWindow(account *codexQuotaAccount, window *codexUsageWindow, primary bool) {
@@ -499,7 +511,8 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 		Plans:       plans,
 		Buckets: []codexQuotaBucket{
 			{Label: "0%", Count: 0},
-			{Label: "1-20%", Count: 0},
+			{Label: "1-5%", Count: 0},
+			{Label: "6-20%", Count: 0},
 			{Label: "21-50%", Count: 0},
 			{Label: "51-80%", Count: 0},
 			{Label: "81-90%", Count: 0},
@@ -538,16 +551,18 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 		switch {
 		case value == 0:
 			summary.Buckets[0].Count++
-		case value <= 20:
+		case value <= 5:
 			summary.Buckets[1].Count++
-		case value <= 50:
+		case value <= 20:
 			summary.Buckets[2].Count++
-		case value <= 80:
+		case value <= 50:
 			summary.Buckets[3].Count++
-		case value <= 90:
+		case value <= 80:
 			summary.Buckets[4].Count++
-		default:
+		case value <= 90:
 			summary.Buckets[5].Count++
+		default:
+			summary.Buckets[6].Count++
 		}
 	}
 	if len(values) > 0 {

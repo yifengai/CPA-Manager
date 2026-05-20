@@ -129,7 +129,7 @@ func TestBuildCodexQuotaSummaryCountsDisabledByLocalSwitch(t *testing.T) {
 }
 
 func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
-	values := []int{0, 20, 50, 80, 90, 100}
+	values := []int{0, 5, 20, 50, 80, 90, 100}
 	accounts := make([]codexQuotaAccount, 0, len(values))
 	for _, value := range values {
 		remaining := value
@@ -143,7 +143,8 @@ func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
 
 	want := []codexQuotaBucket{
 		{Label: "0%", Count: 1},
-		{Label: "1-20%", Count: 1},
+		{Label: "1-5%", Count: 1},
+		{Label: "6-20%", Count: 1},
 		{Label: "21-50%", Count: 1},
 		{Label: "51-80%", Count: 1},
 		{Label: "81-90%", Count: 1},
@@ -162,12 +163,15 @@ func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
 func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndAuthError(t *testing.T) {
 	authDir := t.TempDir()
 	writeTestCodexAuth(t, authDir, "limited.json", false)
+	writeTestCodexAuth(t, authDir, "low.json", false)
 	writeTestCodexAuth(t, authDir, "error.json", false)
 	writeTestCodexAuth(t, authDir, "timeout.json", false)
 	writeTestCodexAuth(t, authDir, "available.json", false)
+	lowRemaining := 5
 
 	accounts := []codexQuotaAccount{
 		{File: "limited.json", Status: "limited", StatusText: "受限"},
+		{File: "low.json", Status: "available", StatusText: "可用", CurrentRemainingPercent: &lowRemaining},
 		{File: "error.json", Status: "error", StatusText: "HTTP 401", Error: "token invalidated"},
 		{File: "timeout.json", Status: "error", StatusText: "查询失败", Error: "context deadline exceeded"},
 		{File: "available.json", Status: "available", StatusText: "可用"},
@@ -182,19 +186,28 @@ func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndAuthError(t *testi
 		t.Fatalf("limited status text = %q", updated[0].StatusText)
 	}
 	if !updated[1].Disabled || updated[1].Status != "disabled" {
-		t.Fatalf("error account = %+v, want disabled", updated[1])
+		t.Fatalf("low remaining account = %+v, want disabled", updated[1])
 	}
-	if updated[1].StatusText != "已自动停用：异常" {
-		t.Fatalf("error status text = %q", updated[1].StatusText)
+	if updated[1].StatusText != "已自动停用：低余量" {
+		t.Fatalf("low remaining status text = %q", updated[1].StatusText)
 	}
-	if updated[2].Disabled || updated[2].Status != "error" {
-		t.Fatalf("timeout account = %+v, want unchanged error", updated[2])
+	if !updated[2].Disabled || updated[2].Status != "disabled" {
+		t.Fatalf("error account = %+v, want disabled", updated[2])
 	}
-	if updated[3].Disabled || updated[3].Status != "available" {
-		t.Fatalf("available account = %+v, want unchanged", updated[3])
+	if updated[2].StatusText != "已自动停用：异常" {
+		t.Fatalf("error status text = %q", updated[2].StatusText)
+	}
+	if updated[3].Disabled || updated[3].Status != "error" {
+		t.Fatalf("timeout account = %+v, want unchanged error", updated[3])
+	}
+	if updated[4].Disabled || updated[4].Status != "available" {
+		t.Fatalf("available account = %+v, want unchanged", updated[4])
 	}
 	if !readDisabledFlag(t, authDir, "limited.json") {
 		t.Fatal("limited auth file should be disabled")
+	}
+	if !readDisabledFlag(t, authDir, "low.json") {
+		t.Fatal("low remaining auth file should be disabled")
 	}
 	if !readDisabledFlag(t, authDir, "error.json") {
 		t.Fatal("error auth file should be disabled")

@@ -198,7 +198,7 @@ export const buildAccountPoolBalance = (
       account.allowed !== false &&
       !account.limitReached &&
       typeof account.currentRemainingPercent === 'number' &&
-      account.currentRemainingPercent > 0
+      account.currentRemainingPercent > 5
     );
   });
   const measurableAccounts = scopedAccounts.filter(
@@ -258,7 +258,7 @@ export const getCodexQuotaBusinessStatus = (
     account.status === 'limited' ||
     account.limitReached ||
     account.allowed === false ||
-    remaining === 0
+    remaining <= 5
   ) {
     return 'limited';
   }
@@ -282,9 +282,9 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
     account.status === 'limited' ||
     account.limitReached ||
     account.allowed === false ||
-    account.currentRemainingPercent === 0
+    (typeof account.currentRemainingPercent === 'number' && account.currentRemainingPercent <= 5)
   ) {
-    return '账号已达调用上限';
+    return account.currentRemainingPercent === 0 ? '账号已达调用上限' : '余量低于等于5%，默认停用';
   }
   if (account.status === 'error') return '查询失败';
   return '-';

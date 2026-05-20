@@ -393,12 +393,12 @@ export function MainLayout() {
     { path: '/auth-files', label: t('nav.auth_files'), icon: sidebarIcons.authFiles },
     { path: '/oauth', label: t('nav.oauth', { defaultValue: 'OAuth' }), icon: sidebarIcons.oauth },
     { path: '/quota', label: t('nav.quota_management'), icon: sidebarIcons.quota },
+    { path: '/monitoring', label: t('nav.monitoring_center'), icon: sidebarIcons.monitoring },
     {
       path: '/codex-quota',
       label: t('nav.codex_quota', { defaultValue: 'Codex余量' }),
       icon: sidebarIcons.quota,
     },
-    { path: '/monitoring', label: t('nav.monitoring_center'), icon: sidebarIcons.monitoring },
     {
       path: '/request-logs',
       label: t('nav.request_logs', { defaultValue: '请求日志' }),
