@@ -1513,12 +1513,12 @@ export function CodexQuotaDashboardPage() {
                     onChange={toggleAllVisible}
                   />
                 </th>
-                <th>账号与状态</th>
-                <th>周限额</th>
-                <th>当前额度周期消耗</th>
-                <th>导入时间</th>
-                <th>存活</th>
-                <th>凭证与刷新</th>
+                <th className={styles.accountColumn}>账号与状态</th>
+                <th className={styles.quotaLimitColumn}>周限额</th>
+                <th className={styles.cycleUsageColumn}>当前额度周期消耗</th>
+                <th className={styles.importedColumn}>导入时间</th>
+                <th className={styles.survivalColumn}>存活</th>
+                <th className={styles.credentialColumn}>凭证与刷新</th>
                 <th className={styles.actionsColumn}>操作</th>
               </tr>
             </thead>
@@ -1559,7 +1559,7 @@ export function CodexQuotaDashboardPage() {
                           onChange={() => toggleSelected(account.file)}
                         />
                       </td>
-                      <td>
+                      <td className={styles.accountColumn}>
                         <div className={styles.accountCell}>
                           <div className={styles.accountTitleRow}>
                             <div className={styles.accountIdentity}>
@@ -1594,7 +1594,7 @@ export function CodexQuotaDashboardPage() {
                           ) : null}
                         </div>
                       </td>
-                      <td>
+                      <td className={styles.quotaLimitColumn}>
                         <div className={styles.quotaLimitStack}>
                           {quotaLimitRows.map((row) => {
                             const cycleProgress = buildQuotaCycleProgress(
@@ -1646,7 +1646,7 @@ export function CodexQuotaDashboardPage() {
                           })}
                         </div>
                       </td>
-                      <td>
+                      <td className={styles.cycleUsageColumn}>
                         <div
                           className={styles.cycleUsageCell}
                           title={buildCycleUsageTitle(cycleUsage)}
@@ -1657,17 +1657,17 @@ export function CodexQuotaDashboardPage() {
                           <small>{formatCycleUsageMeta(cycleUsage)}</small>
                         </div>
                       </td>
-                      <td>
+                      <td className={styles.importedColumn}>
                         <div className={styles.metricStack}>
                           <span>{valueOrDash(account.importedAt)}</span>
                         </div>
                       </td>
-                      <td>
+                      <td className={styles.survivalColumn}>
                         <div className={styles.metricStack}>
                           <span>{formatAccountSurvivalDays(account.importedAt)}</span>
                         </div>
                       </td>
-                      <td>
+                      <td className={styles.credentialColumn}>
                         <div className={styles.metricStack}>
                           <span>过期 {valueOrDash(account.tokenExpiredAt)}</span>
                           <small>刷新 {valueOrDash(account.lastRefreshAt)}</small>

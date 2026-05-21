@@ -547,16 +547,18 @@
 
 .tableWrap table {
   width: 100%;
-  min-width: 1020px;
+  min-width: 1560px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
+  table-layout: fixed;
 }
 
 .tableWrap th,
 .tableWrap td {
   padding: 7px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--border-color) 76%, transparent);
+  overflow: hidden;
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
@@ -585,6 +587,36 @@
     height: 16px;
     cursor: pointer;
   }
+}
+
+.accountColumn {
+  width: 430px;
+  min-width: 430px;
+}
+
+.quotaLimitColumn {
+  width: 270px;
+  min-width: 270px;
+}
+
+.cycleUsageColumn {
+  width: 190px;
+  min-width: 190px;
+}
+
+.importedColumn {
+  width: 166px;
+  min-width: 166px;
+}
+
+.survivalColumn {
+  width: 86px;
+  min-width: 86px;
+}
+
+.credentialColumn {
+  width: 222px;
+  min-width: 222px;
 }
 
 .accountCell {
@@ -622,9 +654,9 @@
 }
 
 .accountTitleRow {
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 14px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 6px 8px;
 }
 
 .accountMetaRow {
@@ -633,7 +665,7 @@
 
 .accountIdentity {
   display: inline-flex;
-  min-width: max-content;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
@@ -672,7 +704,8 @@
 }
 
 .accountTitleRow strong {
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .accountMetaRow small {
@@ -713,17 +746,20 @@
 
 .cycleUsageCell {
   display: grid;
-  min-width: 118px;
-  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  align-content: center;
+  gap: 3px;
 
   strong {
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 800;
+    line-height: 1.15;
   }
 
   small {
-    max-width: 150px;
+    max-width: 100%;
     overflow: hidden;
     color: var(--text-secondary);
     font-size: 11px;
@@ -735,8 +771,9 @@
 
 .cycleMetric {
   display: grid;
-  width: min(146px, 100%);
+  width: 100%;
   min-width: 118px;
+  max-width: 184px;
   gap: 5px;
 }
 
@@ -748,6 +785,7 @@
   font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
+  min-width: 0;
 }
 
 .cycleUsedLabel {
@@ -797,7 +835,7 @@
 
 .quotaLimitStack {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -816,9 +854,9 @@
 }
 
 .quotaLimitHeader {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-width: 0;
   font-size: 12px;
@@ -832,8 +870,11 @@
   }
 
   span {
+    overflow: hidden;
     color: var(--text-secondary);
     font-size: 11px;
+    text-align: right;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
