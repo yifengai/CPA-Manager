@@ -137,10 +137,20 @@ export const buildQuotaCycleProgress = (
   };
 };
 
-const hasWeeklyQuotaWindow = (account: CodexQuotaAccount) =>
+export const hasCodexQuotaWeeklyWindow = (account: CodexQuotaAccount) =>
   typeof account.longRemainingPercent === 'number' ||
   typeof account.longUsedPercent === 'number' ||
   account.longResetAt !== '';
+
+export const getCodexQuotaDisplayRemainingPercent = (account: CodexQuotaAccount) =>
+  hasCodexQuotaWeeklyWindow(account)
+    ? (account.longRemainingPercent ?? account.currentRemainingPercent)
+    : account.currentRemainingPercent;
+
+export const getCodexQuotaDisplayResetAt = (account: CodexQuotaAccount) =>
+  hasCodexQuotaWeeklyWindow(account) && account.longResetAt
+    ? account.longResetAt
+    : account.currentResetAt;
 
 export const getCodexQuotaCycleResetAt = (
   account: CodexQuotaAccount,
@@ -148,8 +158,7 @@ export const getCodexQuotaCycleResetAt = (
 ) => {
   const restoredResetAt = restoredRecord?.resetAfter?.trim();
   if (restoredResetAt) return restoredResetAt;
-  if (hasWeeklyQuotaWindow(account) && account.longResetAt) return account.longResetAt;
-  return account.currentResetAt;
+  return getCodexQuotaDisplayResetAt(account);
 };
 
 const parseBeijingTextMs = (value?: string | null) => {
@@ -356,23 +365,26 @@ export const buildAccountPoolBalance = (
   const settings = sanitizeAccountPoolBalanceSettings(rawSettings);
   const averageTokensPerCall = settings.accountCycleTokens / settings.accountCycleCalls;
   const scopedAccounts = accounts.filter((account) => {
+    const remainingPercent = getCodexQuotaDisplayRemainingPercent(account);
     if (scope === 'inventory') return true;
     return (
       !account.disabled &&
-      account.status === 'available' &&
-      account.allowed !== false &&
-      !account.limitReached &&
-      typeof account.currentRemainingPercent === 'number' &&
-      account.currentRemainingPercent > lowQuotaAutoDisableThreshold
+      account.status !== 'disabled' &&
+      getCodexQuotaBusinessStatus(account) === 'callable' &&
+      typeof remainingPercent === 'number' &&
+      remainingPercent > lowQuotaAutoDisableThreshold
     );
   });
   const measurableAccounts = scopedAccounts.filter(
     (account) =>
-      typeof account.currentRemainingPercent === 'number' &&
-      Number.isFinite(account.currentRemainingPercent)
+      typeof getCodexQuotaDisplayRemainingPercent(account) === 'number' &&
+      Number.isFinite(getCodexQuotaDisplayRemainingPercent(account))
   );
   const estimatedRemainingTokens = measurableAccounts.reduce((total, account) => {
-    const remainingPercent = Math.max(0, Math.min(100, account.currentRemainingPercent ?? 0));
+    const remainingPercent = Math.max(
+      0,
+      Math.min(100, getCodexQuotaDisplayRemainingPercent(account) ?? 0)
+    );
     return total + settings.accountCycleTokens * (remainingPercent / 100);
   }, 0);
 
@@ -457,7 +469,7 @@ const isAuthQuotaError = (account: CodexQuotaAccount) => {
 export const getCodexQuotaBusinessStatus = (
   account: CodexQuotaAccount
 ): CodexQuotaBusinessStatus => {
-  const remaining = account.currentRemainingPercent;
+  const remaining = getCodexQuotaDisplayRemainingPercent(account);
   if (isAuthQuotaError(account)) return 'error';
   if (account.status === 'error') return 'unknown';
   if (
@@ -496,10 +508,10 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
     account.status === 'limited' ||
     account.limitReached ||
     account.allowed === false ||
-    (typeof account.currentRemainingPercent === 'number' &&
-      account.currentRemainingPercent <= lowQuotaAutoDisableThreshold)
+    (typeof getCodexQuotaDisplayRemainingPercent(account) === 'number' &&
+      getCodexQuotaDisplayRemainingPercent(account)! <= lowQuotaAutoDisableThreshold)
   ) {
-    return account.currentRemainingPercent === 0
+    return getCodexQuotaDisplayRemainingPercent(account) === 0
       ? '账号已达调用上限'
       : `余量低于等于${lowQuotaAutoDisableThreshold}%，默认停用`;
   }
@@ -513,7 +525,7 @@ export const getAccountListDisplay = (account: CodexQuotaAccount): AccountListDi
   const reason = normalizeQuotaErrorReason(account);
   const detail = normalizeQuotaErrorDetail(account);
   const businessLabels: Record<CodexQuotaBusinessStatus, string> = {
-    callable: '可调用',
+    callable: '健康',
     limited: '受限',
     error: '异常',
     unknown: '未知',

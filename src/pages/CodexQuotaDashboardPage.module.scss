@@ -50,15 +50,23 @@
   }
 }
 
-.refreshTime {
+.refreshTimeGroup {
   flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
   color: var(--text-secondary);
   font-size: 13px;
-  text-align: right;
-  white-space: nowrap;
+
+  span {
+    white-space: nowrap;
+  }
 
   @include mobile {
-    text-align: left;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 4px 10px;
   }
 }
 
@@ -660,7 +668,7 @@
 }
 
 .accountMetaRow {
-  gap: 6px;
+  gap: 6px 8px;
 }
 
 .accountIdentity {
@@ -716,8 +724,8 @@
 }
 
 .accountReasonDetail {
-  display: block;
-  max-width: 620px;
+  display: inline-block;
+  max-width: 360px;
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: 11px;

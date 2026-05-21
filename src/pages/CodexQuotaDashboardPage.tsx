@@ -14,7 +14,10 @@ import {
   getAccountSurvivalBucketKey,
   getAccountSurvivalMs,
   getAccountListDisplay,
+  getCodexQuotaDisplayRemainingPercent,
+  getCodexQuotaDisplayResetAt,
   getCodexQuotaBusinessStatus,
+  hasCodexQuotaWeeklyWindow,
   getRecoveryDayBucketKey,
   type AccountPoolBalanceSettings,
   type AccountPoolBalanceScope,
@@ -36,7 +39,7 @@ import styles from './CodexQuotaDashboardPage.module.scss';
 
 type StatusFilter = 'all' | CodexQuotaBusinessStatus;
 type SwitchFilter = 'all' | 'enabled' | 'disabled';
-type AccountTypeKey = 'free' | 'plus' | 'pro';
+type AccountTypeKey = 'free' | 'plus' | 'pro' | 'unknown';
 type SortMode =
   | 'remaining-asc'
   | 'remaining-desc'
@@ -60,10 +63,11 @@ type QuickFilter =
 const quotaCacheKey = 'cpa-manager:codex-quota:last-snapshot:v1';
 const todayRestoredHistoryCacheKey = 'cpa-manager:codex-quota:today-restored-history:v1';
 const todayUsageSummaryCacheKey = 'cpa-manager:codex-quota:today-usage-summary:v1';
+const todayUsageRefreshAtCacheKey = 'cpa-manager:codex-quota:today-usage-refresh-at:v1';
 
 const statusOptions = [
   { value: 'all', label: '状态' },
-  { value: 'callable', label: '可调用' },
+  { value: 'callable', label: '健康' },
   { value: 'limited', label: '受限' },
   { value: 'error', label: '异常' },
   { value: 'unknown', label: '未知' },
@@ -88,6 +92,7 @@ const accountTypeDefinitions: Array<{ key: AccountTypeKey; label: string }> = [
   { key: 'free', label: 'free' },
   { key: 'plus', label: 'plus' },
   { key: 'pro', label: 'pro' },
+  { key: 'unknown', label: '未知类型' },
 ];
 
 const recoveryBuckets: Array<{ key: RecoveryDayBucketKey; label: string }> = [
@@ -122,7 +127,9 @@ const survivalBuckets: Array<{ key: SurvivalBucketKey; label: string }> = [
   { key: 'unknown', label: '未知' },
 ];
 
-const normalizeAccountTypeKey = (plan?: string | null): AccountTypeKey | null => {
+const normalizeAccountTypeKey = (
+  plan?: string | null
+): Exclude<AccountTypeKey, 'unknown'> | null => {
   const normalized = (plan ?? '')
     .trim()
     .toLowerCase()
@@ -145,8 +152,10 @@ const planLabel = (plan: string) => {
 
 const planBadgeLabel = (plan: string) => planLabel(plan);
 
-const accountTypeMatches = (account: CodexQuotaAccount, key: AccountTypeKey) =>
-  normalizeAccountTypeKey(account.plan) === key;
+const accountTypeMatches = (account: CodexQuotaAccount, key: AccountTypeKey) => {
+  const normalized = normalizeAccountTypeKey(account.plan);
+  return key === 'unknown' ? normalized === null : normalized === key;
+};
 
 const percent = (value?: number | null) =>
   typeof value === 'number' && Number.isFinite(value) ? `${value}%` : '-';
@@ -154,26 +163,16 @@ const percent = (value?: number | null) =>
 const valueOrDash = (value?: string | number | null) =>
   value === undefined || value === null || value === '' ? '-' : String(value);
 
-const hasWeeklyQuotaWindow = (account: CodexQuotaAccount) =>
-  typeof account.longRemainingPercent === 'number' ||
-  typeof account.longUsedPercent === 'number' ||
-  account.longResetAt !== '';
-
 const getDisplayQuotaRemainingPercent = (account: CodexQuotaAccount) =>
-  hasWeeklyQuotaWindow(account)
-    ? (account.longRemainingPercent ?? account.currentRemainingPercent)
-    : account.currentRemainingPercent;
+  getCodexQuotaDisplayRemainingPercent(account);
 
-const getDisplayQuotaResetAt = (account: CodexQuotaAccount) =>
-  hasWeeklyQuotaWindow(account) && account.longResetAt
-    ? account.longResetAt
-    : account.currentResetAt;
+const getDisplayQuotaResetAt = (account: CodexQuotaAccount) => getCodexQuotaDisplayResetAt(account);
 
 const buildQuotaLimitRows = (account: CodexQuotaAccount, restoredRecord?: TodayRestoredAccount) => {
   const restoredNote = restoredRecord
     ? `今日已重置 ${restoredRecord.restoredAt}，新周期 ${restoredRecord.resetAfter}`
     : '';
-  if (hasWeeklyQuotaWindow(account)) {
+  if (hasCodexQuotaWeeklyWindow(account)) {
     return [
       {
         key: 'five-hour',
@@ -264,6 +263,20 @@ const sortTime = (value: string) => {
   return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
 };
 
+const formatBeijingDateTime = (value: Date | number) =>
+  new Date(value)
+    .toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+    .replace(/\//g, '-');
+
 const sortSurvivalTime = (left: CodexQuotaAccount, right: CodexQuotaAccount, desc = false) => {
   const leftValue = getAccountSurvivalMs(left.importedAt);
   const rightValue = getAccountSurvivalMs(right.importedAt);
@@ -288,7 +301,7 @@ const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
 
 const quickFilterLabel = (filter: QuickFilter) => {
   if (filter === 'all') return '全部账号';
-  if (filter === 'callable') return '可调用账号';
+  if (filter === 'callable') return '健康账号';
   if (filter === 'enabled') return '启用账号';
   if (filter === 'limited') return '受限账号';
   if (filter === 'error') return '异常账号';
@@ -388,14 +401,15 @@ const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['
   };
 
   accounts.forEach((account) => {
-    if (account.disabled) summary.disabled += 1;
-    else if (account.status === 'available') summary.available += 1;
-    else if (account.status === 'limited') summary.limited += 1;
-    else if (account.status === 'disabled') summary.disabled += 1;
-    else summary.errors += 1;
+    const switchDisabled = account.disabled || account.status === 'disabled';
+    const businessStatus = getCodexQuotaBusinessStatus(account);
+    if (switchDisabled) summary.disabled += 1;
+    if (businessStatus === 'callable') summary.available += 1;
+    else if (businessStatus === 'limited') summary.limited += 1;
+    else if (businessStatus === 'error') summary.errors += 1;
 
     if (account.plan) plans[account.plan] = (plans[account.plan] ?? 0) + 1;
-    const value = account.currentRemainingPercent;
+    const value = getDisplayQuotaRemainingPercent(account);
     if (typeof value !== 'number') return;
     values.push(value);
     if (value <= 10) summary.critical += 1;
@@ -558,11 +572,34 @@ const writeCachedTodayUsageSummary = (payload: TodayUsageSummary) => {
   }
 };
 
+const readCachedTodayUsageRefreshAt = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage.getItem(todayUsageRefreshAtCacheKey) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+const writeCachedTodayUsageRefreshAt = (payload: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(todayUsageRefreshAtCacheKey, payload);
+  } catch {
+    // localStorage may be unavailable in private mode; the page still works without usage cache.
+  }
+};
+
 export function CodexQuotaDashboardPage() {
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
-  const { usage, modelPrices, loadUsage } = useUsageData({ autoLoadUsage: true });
+  const {
+    usage,
+    modelPrices,
+    loadUsage,
+    lastRefreshedAt: usageLastRefreshedAt,
+  } = useUsageData({ autoLoadUsage: true });
 
   const [data, setData] = useState<CodexQuotaResponse | null>(() => readCachedQuota());
   const [todayRestoredHistory, setTodayRestoredHistory] = useState<TodayRestoredAccount[]>(() =>
@@ -587,6 +624,9 @@ export function CodexQuotaDashboardPage() {
   );
   const [lastRefreshAt, setLastRefreshAt] = useState(
     () => readCachedQuota()?.summary.generatedAt ?? ''
+  );
+  const [todayUsageRefreshAt, setTodayUsageRefreshAt] = useState(() =>
+    readCachedTodayUsageRefreshAt()
   );
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(() => new Set());
   const disabled = connectionStatus !== 'connected';
@@ -624,9 +664,12 @@ export function CodexQuotaDashboardPage() {
   useEffect(() => {
     if (!usage) return;
     const nextTodayUsageSummary = buildTodayUsageSummary(usage, modelPrices);
+    const nextTodayUsageRefreshAt = formatBeijingDateTime(usageLastRefreshedAt ?? Date.now());
     setTodayUsageSummary(nextTodayUsageSummary);
+    setTodayUsageRefreshAt(nextTodayUsageRefreshAt);
     writeCachedTodayUsageSummary(nextTodayUsageSummary);
-  }, [modelPrices, usage]);
+    writeCachedTodayUsageRefreshAt(nextTodayUsageRefreshAt);
+  }, [modelPrices, usage, usageLastRefreshedAt]);
 
   const loadQuota = useCallback(async () => {
     setLoading(true);
@@ -639,12 +682,15 @@ export function CodexQuotaDashboardPage() {
         existingHistory: todayRestoredHistory,
       });
       const nextTodayUsageSummary = buildTodayUsageSummary(usagePayload, modelPrices);
+      const nextTodayUsageRefreshAt = formatBeijingDateTime(Date.now());
       setData(response);
       setTodayRestoredHistory(nextHistory);
       setTodayUsageSummary(nextTodayUsageSummary);
+      setTodayUsageRefreshAt(nextTodayUsageRefreshAt);
       writeCachedQuota(response);
       writeCachedTodayRestoredHistory(nextHistory);
       writeCachedTodayUsageSummary(nextTodayUsageSummary);
+      writeCachedTodayUsageRefreshAt(nextTodayUsageRefreshAt);
       setLastRefreshAt(response.summary.generatedAt);
       setSelectedFiles((previous) => {
         const existing = new Set(response.accounts.map((account) => account.file));
@@ -978,8 +1024,11 @@ export function CodexQuotaDashboardPage() {
           const result = await codexQuotaApi.clearFailedUsage();
           const usagePayload = await loadUsage();
           const nextTodayUsageSummary = buildTodayUsageSummary(usagePayload, modelPrices);
+          const nextTodayUsageRefreshAt = formatBeijingDateTime(Date.now());
           setTodayUsageSummary(nextTodayUsageSummary);
+          setTodayUsageRefreshAt(nextTodayUsageRefreshAt);
           writeCachedTodayUsageSummary(nextTodayUsageSummary);
+          writeCachedTodayUsageRefreshAt(nextTodayUsageRefreshAt);
           showNotification(`已清除 ${result.deleted} 条失败调用记录`, 'success');
         } catch (err) {
           const message = err instanceof Error ? err.message : '清除失败';
@@ -1043,7 +1092,7 @@ export function CodexQuotaDashboardPage() {
   );
   const accountPoolRule = `计算规则：单账号满额按 ${formatCompactNumber(
     poolSettings.accountCycleTokens
-  )} Tokens，等价价值按 GPT-5.5 输入价 ${gpt55InputPriceText} 折算，当前余量按账号剩余百分比累加。`;
+  )} Tokens，等价价值按 GPT-5.5 输入价 ${gpt55InputPriceText} 折算，按页面展示余量优先取周限额累加。`;
   const quotaBucketCounts = useMemo(() => {
     const counts: Record<QuotaBucketKey, number> = {
       zero: 0,
@@ -1079,16 +1128,17 @@ export function CodexQuotaDashboardPage() {
       free: 0,
       plus: 0,
       pro: 0,
+      unknown: 0,
     };
     (data?.accounts ?? []).forEach((account) => {
-      const key = normalizeAccountTypeKey(account.plan);
-      if (key) counts[key] += 1;
+      const key = normalizeAccountTypeKey(account.plan) ?? 'unknown';
+      counts[key] += 1;
     });
     return counts;
   }, [data?.accounts]);
   const quickViews: Array<{ filter: QuickFilter; label: string; count: number | string }> = [
     { filter: 'all', label: '全部', count: summary?.total ?? '-' },
-    { filter: 'callable', label: '可调用', count: businessStatusCounts.callable },
+    { filter: 'callable', label: '健康', count: businessStatusCounts.callable },
     { filter: 'limited', label: '受限', count: businessStatusCounts.limited },
     { filter: 'error', label: '异常', count: businessStatusCounts.error },
     { filter: 'unknown', label: '未知', count: businessStatusCounts.unknown },
@@ -1142,7 +1192,10 @@ export function CodexQuotaDashboardPage() {
           </p>
         </div>
         <div className={styles.refreshGroup}>
-          <span className={styles.refreshTime}>当前刷新时间：{lastRefreshAt || '未刷新'}</span>
+          <div className={styles.refreshTimeGroup}>
+            <span>余量刷新：{lastRefreshAt || '未刷新'}</span>
+            <span>用量刷新：{todayUsageRefreshAt || '未刷新'}</span>
+          </div>
           <Button onClick={() => void loadQuota()} loading={loading} disabled={disabled} size="sm">
             <span>刷新余量</span>
           </Button>
@@ -1196,7 +1249,7 @@ export function CodexQuotaDashboardPage() {
         </div>
         <div className={styles.accountPoolMetrics}>
           <div className={styles.accountPoolMetricCard}>
-            <span>{poolScope === 'available' ? '可调用账号' : '库存账号'}</span>
+            <span>{poolScope === 'available' ? '健康启用账号' : '库存账号'}</span>
             <strong>{accountPoolBalance.accountCount}</strong>
             <small>{poolScope === 'available' ? '当前进入调用池' : '含停用账号'}</small>
           </div>
@@ -1206,7 +1259,7 @@ export function CodexQuotaDashboardPage() {
             <small>{accountPoolBalance.measurableAccounts} 个账号参与计算</small>
           </div>
           <div className={`${styles.accountPoolMetricCard} ${styles.accountPoolMetricCalls}`}>
-            <span>预计可调用</span>
+            <span>预计可承接</span>
             <strong>{accountPoolBalance.estimatedCalls}</strong>
             <small>按平均 {formatCompactNumber(averageTokensPerCall)} Tokens/次换算</small>
           </div>
@@ -1568,7 +1621,7 @@ export function CodexQuotaDashboardPage() {
                               >
                                 {planBadgeLabel(account.plan)}
                               </span>
-                              <strong>{account.account}</strong>
+                              <strong>{account.email || account.account}</strong>
                             </div>
                             <span
                               className={`${styles.accountSwitchPill} ${styles[`switch_${accountDisplay.switchTone}`]}`}
@@ -1583,15 +1636,15 @@ export function CodexQuotaDashboardPage() {
                               {accountDisplay.businessLabel}
                             </span>
                             {accountDisplay.reason ? <small>{accountDisplay.reason}</small> : null}
+                            {accountDisplay.detail && accountDisplay.businessTone !== 'callable' ? (
+                              <small
+                                className={styles.accountReasonDetail}
+                                title={accountDisplay.detail}
+                              >
+                                详情：{accountDisplay.detail}
+                              </small>
+                            ) : null}
                           </div>
-                          {accountDisplay.detail && accountDisplay.businessTone !== 'callable' ? (
-                            <div
-                              className={styles.accountReasonDetail}
-                              title={accountDisplay.detail}
-                            >
-                              错误返回：{accountDisplay.detail}
-                            </div>
-                          ) : null}
                         </div>
                       </td>
                       <td className={styles.quotaLimitColumn}>

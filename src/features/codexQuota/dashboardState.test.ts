@@ -31,8 +31,8 @@ const createAccount = (overrides: Partial<CodexQuotaAccount> = {}): CodexQuotaAc
   currentUsedPercent: overrides.currentUsedPercent ?? 20,
   currentResetAt: overrides.currentResetAt ?? '2026-05-18 20:00:00',
   longWindowText: overrides.longWindowText ?? '7天',
-  longRemainingPercent: overrides.longRemainingPercent ?? 80,
-  longUsedPercent: overrides.longUsedPercent ?? 20,
+  longRemainingPercent: overrides.longRemainingPercent ?? overrides.currentRemainingPercent ?? 80,
+  longUsedPercent: overrides.longUsedPercent ?? overrides.currentUsedPercent ?? 20,
   longResetAt: overrides.longResetAt ?? '2026-05-25 20:00:00',
   creditsBalance: overrides.creditsBalance,
   tokenExpiredAt: overrides.tokenExpiredAt ?? '2026-06-18 20:00:00',
@@ -239,7 +239,7 @@ describe('codex quota dashboard state', () => {
     expect(getAccountListDisplay(createAccount())).toMatchObject({
       switchLabel: '启用',
       switchTone: 'enabled',
-      businessLabel: '可调用',
+      businessLabel: '健康',
       businessTone: 'callable',
       reason: '',
     });
@@ -254,7 +254,7 @@ describe('codex quota dashboard state', () => {
     ).toMatchObject({
       switchLabel: '已停用',
       switchTone: 'disabled',
-      businessLabel: '可调用',
+      businessLabel: '健康',
       businessTone: 'callable',
       reason: '已停用，不进入调用池',
     });
