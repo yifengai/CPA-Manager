@@ -407,9 +407,14 @@ describe('codex quota dashboard state', () => {
     ).toBe('limited');
     expect(
       getCodexQuotaBusinessStatus(
-        createAccount({ disabled: true, status: 'disabled', currentRemainingPercent: 5 })
+        createAccount({ disabled: true, status: 'disabled', currentRemainingPercent: 3 })
       )
     ).toBe('limited');
+    expect(
+      getCodexQuotaBusinessStatus(
+        createAccount({ disabled: true, status: 'disabled', currentRemainingPercent: 4 })
+      )
+    ).toBe('callable');
     expect(
       getCodexQuotaBusinessStatus(
         createAccount({

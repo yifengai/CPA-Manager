@@ -22,6 +22,7 @@ const (
 	codexQuotaWorkers        = 32
 	codexQuotaRequestTimeout = 12 * time.Second
 	codexQuotaCycleDuration  = 7 * 24 * time.Hour
+	codexLowQuotaThreshold   = 3
 )
 
 var codexUsageURL = "https://chatgpt.com/backend-api/wham/usage"
@@ -451,7 +452,7 @@ func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAc
 		account.Status = "disabled"
 		if isLowRemainingCodexQuotaAccount(*account) && originalStatus != "limited" {
 			account.StatusText = "已自动停用：低余量"
-			account.Error = "余量低于等于5%，默认停用"
+			account.Error = fmt.Sprintf("余量低于等于%d%%，默认停用", codexLowQuotaThreshold)
 			continue
 		}
 		if originalStatus == "limited" {
@@ -493,7 +494,8 @@ func shouldAutoDisableCodexQuotaAccount(account codexQuotaAccount) bool {
 }
 
 func isLowRemainingCodexQuotaAccount(account codexQuotaAccount) bool {
-	return account.CurrentRemainingPercent != nil && *account.CurrentRemainingPercent <= 5
+	return account.CurrentRemainingPercent != nil &&
+		*account.CurrentRemainingPercent <= codexLowQuotaThreshold
 }
 
 func applyWindow(account *codexQuotaAccount, window *codexUsageWindow, primary bool) {

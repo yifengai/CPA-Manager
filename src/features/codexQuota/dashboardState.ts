@@ -71,6 +71,7 @@ export interface QuotaCycleProgress {
 const gpt55InputUsdPerMillionTokens = 5;
 const defaultAccountCycleTokens = 4_000_000;
 const quotaCycleDurationMs = 7 * 24 * 60 * 60 * 1000;
+const lowQuotaAutoDisableThreshold = 3;
 
 export interface TodayUsageSummary {
   hasUsageData: boolean;
@@ -362,7 +363,7 @@ export const buildAccountPoolBalance = (
       account.allowed !== false &&
       !account.limitReached &&
       typeof account.currentRemainingPercent === 'number' &&
-      account.currentRemainingPercent > 5
+      account.currentRemainingPercent > lowQuotaAutoDisableThreshold
     );
   });
   const measurableAccounts = scopedAccounts.filter(
@@ -471,7 +472,7 @@ export const getCodexQuotaBusinessStatus = (
     account.status === 'limited' ||
     account.limitReached ||
     account.allowed === false ||
-    remaining <= 5
+    remaining <= lowQuotaAutoDisableThreshold
   ) {
     return 'limited';
   }
@@ -495,9 +496,12 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
     account.status === 'limited' ||
     account.limitReached ||
     account.allowed === false ||
-    (typeof account.currentRemainingPercent === 'number' && account.currentRemainingPercent <= 5)
+    (typeof account.currentRemainingPercent === 'number' &&
+      account.currentRemainingPercent <= lowQuotaAutoDisableThreshold)
   ) {
-    return account.currentRemainingPercent === 0 ? '账号已达调用上限' : '余量低于等于5%，默认停用';
+    return account.currentRemainingPercent === 0
+      ? '账号已达调用上限'
+      : `余量低于等于${lowQuotaAutoDisableThreshold}%，默认停用`;
   }
   if (account.status === 'error') return '查询失败';
   return '-';
