@@ -129,7 +129,7 @@ func TestBuildCodexQuotaSummaryCountsDisabledByLocalSwitch(t *testing.T) {
 }
 
 func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
-	values := []int{0, 5, 20, 50, 80, 90, 100}
+	values := []int{0, 3, 20, 50, 80, 90, 100}
 	accounts := make([]codexQuotaAccount, 0, len(values))
 	for _, value := range values {
 		remaining := value
@@ -143,8 +143,8 @@ func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
 
 	want := []codexQuotaBucket{
 		{Label: "0%", Count: 1},
-		{Label: "1-5%", Count: 1},
-		{Label: "6-20%", Count: 1},
+		{Label: "1-3%", Count: 1},
+		{Label: "4-20%", Count: 1},
 		{Label: "21-50%", Count: 1},
 		{Label: "51-80%", Count: 1},
 		{Label: "81-90%", Count: 1},

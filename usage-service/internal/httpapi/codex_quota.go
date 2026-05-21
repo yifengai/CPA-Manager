@@ -513,8 +513,8 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 		Plans:       plans,
 		Buckets: []codexQuotaBucket{
 			{Label: "0%", Count: 0},
-			{Label: "1-5%", Count: 0},
-			{Label: "6-20%", Count: 0},
+			{Label: "1-3%", Count: 0},
+			{Label: "4-20%", Count: 0},
 			{Label: "21-50%", Count: 0},
 			{Label: "51-80%", Count: 0},
 			{Label: "81-90%", Count: 0},
@@ -553,7 +553,7 @@ func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {
 		switch {
 		case value == 0:
 			summary.Buckets[0].Count++
-		case value <= 5:
+		case value <= 3:
 			summary.Buckets[1].Count++
 		case value <= 20:
 			summary.Buckets[2].Count++

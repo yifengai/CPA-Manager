@@ -99,8 +99,8 @@ const recoveryBuckets: Array<{ key: RecoveryDayBucketKey; label: string }> = [
 
 const quotaBucketDefinitions: Array<{ key: QuotaBucketKey; label: string }> = [
   { key: 'zero', label: '0%' },
-  { key: 'veryLow', label: '1-5%' },
-  { key: 'low', label: '6-20%' },
+  { key: 'veryLow', label: '1-3%' },
+  { key: 'low', label: '4-20%' },
   { key: 'mid', label: '21-50%' },
   { key: 'healthy', label: '51-80%' },
   { key: 'high', label: '81-90%' },
@@ -252,7 +252,7 @@ const quotaBucketKey = (account: CodexQuotaAccount): QuotaBucketKey | null => {
   const value = getDisplayQuotaRemainingPercent(account);
   if (typeof value !== 'number') return null;
   if (value === 0) return 'zero';
-  if (value <= 5) return 'veryLow';
+  if (value <= 3) return 'veryLow';
   if (value <= 20) return 'low';
   if (value <= 50) return 'mid';
   if (value <= 80) return 'healthy';
@@ -325,8 +325,8 @@ const matchesQuickFilter = (
 const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['summary'] => {
   const buckets = [
     { label: '0%', count: 0 },
-    { label: '1-5%', count: 0 },
-    { label: '6-20%', count: 0 },
+    { label: '1-3%', count: 0 },
+    { label: '4-20%', count: 0 },
     { label: '21-50%', count: 0 },
     { label: '51-80%', count: 0 },
     { label: '81-90%', count: 0 },
@@ -375,7 +375,7 @@ const buildClientSummary = (accounts: CodexQuotaAccount[]): CodexQuotaResponse['
     if (value <= 10) summary.critical += 1;
     if (value <= 20) summary.low += 1;
     if (value === 0) buckets[0].count += 1;
-    else if (value <= 5) buckets[1].count += 1;
+    else if (value <= 3) buckets[1].count += 1;
     else if (value <= 20) buckets[2].count += 1;
     else if (value <= 50) buckets[3].count += 1;
     else if (value <= 80) buckets[4].count += 1;
