@@ -19,6 +19,19 @@ export interface CodexQuotaSummary {
   buckets: Array<{ label: string; count: number }>;
 }
 
+export interface CodexQuotaCycleUsage {
+  windowStartAt: string;
+  windowEndAt: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cachedTokens: number;
+  cacheTokens: number;
+  totalTokens: number;
+  lastUsedAt: string;
+}
+
 export interface CodexQuotaAccount {
   file: string;
   account: string;
@@ -43,6 +56,7 @@ export interface CodexQuotaAccount {
   latencyMs?: number;
   error: string;
   sortRemaining: number;
+  currentCycleUsage?: CodexQuotaCycleUsage;
 }
 
 export interface CodexQuotaResponse {

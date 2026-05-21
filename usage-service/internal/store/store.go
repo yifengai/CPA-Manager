@@ -509,6 +509,28 @@ func (s *Store) RecentEvents(ctx context.Context, limit int) ([]usage.Event, err
 	}
 	defer rows.Close()
 
+	return scanUsageEventRows(rows)
+}
+
+func (s *Store) UsageEventsSince(ctx context.Context, sinceMS int64) ([]usage.Event, error) {
+	rows, err := s.db.QueryContext(ctx, `select
+		request_id, event_hash, timestamp_ms, timestamp, provider, model, endpoint, method, path,
+		auth_type, auth_index, source, source_hash, api_key_hash,
+		account_snapshot, auth_label_snapshot, auth_file_snapshot, auth_provider_snapshot, auth_snapshot_at_ms,
+		input_tokens, output_tokens, reasoning_tokens, cached_tokens, cache_tokens, total_tokens,
+		latency_ms, failed, raw_json, created_at_ms
+		from usage_events
+		where timestamp_ms >= ?
+		order by timestamp_ms desc, id desc`, sinceMS)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanUsageEventRows(rows)
+}
+
+func scanUsageEventRows(rows *sql.Rows) ([]usage.Event, error) {
 	events := make([]usage.Event, 0)
 	for rows.Next() {
 		var event usage.Event

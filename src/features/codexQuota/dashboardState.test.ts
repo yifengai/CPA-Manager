@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CodexQuotaAccount } from '@/services/api';
 import {
   buildAccountPoolBalance,
+  buildCodexQuotaCycleUsage,
   buildQuotaCycleProgress,
   buildTodayUsageSummary,
   buildTodayRestoredHistory,
@@ -39,6 +40,7 @@ const createAccount = (overrides: Partial<CodexQuotaAccount> = {}): CodexQuotaAc
   latencyMs: overrides.latencyMs ?? 120,
   error: overrides.error ?? '',
   sortRemaining: overrides.sortRemaining ?? overrides.currentRemainingPercent ?? 80,
+  currentCycleUsage: overrides.currentCycleUsage,
 });
 
 describe('codex quota dashboard state', () => {
@@ -115,6 +117,74 @@ describe('codex quota dashboard state', () => {
       estimatedCalls: 90,
       estimatedValueUsd: 53,
       measurableAccounts: 4,
+    });
+  });
+
+  it('calculates cycle usage from the displayed weekly reset time when cached quota lacks it', () => {
+    const account = createAccount({
+      file: 'weekly@example.com.json',
+      account: 'weekly@example.com',
+      email: 'weekly@example.com',
+      currentResetAt: '',
+      longResetAt: '2026-05-25 20:00:00',
+      currentCycleUsage: undefined,
+    });
+    const usage = {
+      apis: {
+        'POST /v1/responses': {
+          models: {
+            'gpt-5.5': {
+              details: [
+                {
+                  timestamp: '2026-05-22T10:00:00+08:00',
+                  auth_file_snapshot: 'weekly@example.com.json',
+                  auth_provider_snapshot: 'codex',
+                  failed: false,
+                  tokens: {
+                    input_tokens: 1_000,
+                    output_tokens: 100,
+                    cached_tokens: 200,
+                    total_tokens: 1_300,
+                  },
+                },
+                {
+                  timestamp: '2026-05-18T19:59:59+08:00',
+                  auth_file_snapshot: 'weekly@example.com.json',
+                  auth_provider_snapshot: 'codex',
+                  failed: false,
+                  tokens: { total_tokens: 999 },
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    expect(buildCodexQuotaCycleUsage(account, usage)).toMatchObject({
+      windowStartAt: '2026-05-18 20:00:00',
+      windowEndAt: '2026-05-25 20:00:00',
+      requestCount: 1,
+      inputTokens: 1000,
+      outputTokens: 100,
+      cachedTokens: 200,
+      totalTokens: 1300,
+      lastUsedAt: '2026-05-22 10:00:00',
+    });
+  });
+
+  it('returns an empty cycle window instead of missing data when only the reset time is known', () => {
+    const account = createAccount({
+      currentResetAt: '',
+      longResetAt: '2026-05-25 20:00:00',
+      currentCycleUsage: undefined,
+    });
+
+    expect(buildCodexQuotaCycleUsage(account, null)).toMatchObject({
+      windowStartAt: '2026-05-18 20:00:00',
+      windowEndAt: '2026-05-25 20:00:00',
+      requestCount: 0,
+      totalTokens: 0,
     });
   });
 

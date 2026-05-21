@@ -14,11 +14,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/seakee/cpa-manager/usage-service/internal/usage"
 )
 
 const (
 	codexQuotaWorkers        = 32
 	codexQuotaRequestTimeout = 12 * time.Second
+	codexQuotaCycleDuration  = 7 * 24 * time.Hour
 )
 
 var codexUsageURL = "https://chatgpt.com/backend-api/wham/usage"
@@ -37,29 +40,43 @@ type codexAuthFile struct {
 }
 
 type codexQuotaAccount struct {
-	File                    string  `json:"file"`
-	Account                 string  `json:"account"`
-	Email                   string  `json:"email"`
-	ImportedAt              string  `json:"importedAt"`
-	Disabled                bool    `json:"disabled"`
-	Status                  string  `json:"status"`
-	StatusText              string  `json:"statusText"`
-	Plan                    string  `json:"plan"`
-	Allowed                 *bool   `json:"allowed,omitempty"`
-	LimitReached            *bool   `json:"limitReached,omitempty"`
-	CurrentRemainingPercent *int    `json:"currentRemainingPercent,omitempty"`
-	CurrentUsedPercent      *int    `json:"currentUsedPercent,omitempty"`
-	CurrentResetAt          string  `json:"currentResetAt"`
-	LongWindowText          string  `json:"longWindowText"`
-	LongRemainingPercent    *int    `json:"longRemainingPercent,omitempty"`
-	LongUsedPercent         *int    `json:"longUsedPercent,omitempty"`
-	LongResetAt             string  `json:"longResetAt"`
-	CreditsBalance          any     `json:"creditsBalance,omitempty"`
-	TokenExpiredAt          string  `json:"tokenExpiredAt"`
-	LastRefreshAt           string  `json:"lastRefreshAt"`
-	LatencyMS               int64   `json:"latencyMs,omitempty"`
-	Error                   string  `json:"error"`
-	SortRemaining           float64 `json:"sortRemaining"`
+	File                    string                `json:"file"`
+	Account                 string                `json:"account"`
+	Email                   string                `json:"email"`
+	ImportedAt              string                `json:"importedAt"`
+	Disabled                bool                  `json:"disabled"`
+	Status                  string                `json:"status"`
+	StatusText              string                `json:"statusText"`
+	Plan                    string                `json:"plan"`
+	Allowed                 *bool                 `json:"allowed,omitempty"`
+	LimitReached            *bool                 `json:"limitReached,omitempty"`
+	CurrentRemainingPercent *int                  `json:"currentRemainingPercent,omitempty"`
+	CurrentUsedPercent      *int                  `json:"currentUsedPercent,omitempty"`
+	CurrentResetAt          string                `json:"currentResetAt"`
+	LongWindowText          string                `json:"longWindowText"`
+	LongRemainingPercent    *int                  `json:"longRemainingPercent,omitempty"`
+	LongUsedPercent         *int                  `json:"longUsedPercent,omitempty"`
+	LongResetAt             string                `json:"longResetAt"`
+	CreditsBalance          any                   `json:"creditsBalance,omitempty"`
+	TokenExpiredAt          string                `json:"tokenExpiredAt"`
+	LastRefreshAt           string                `json:"lastRefreshAt"`
+	LatencyMS               int64                 `json:"latencyMs,omitempty"`
+	Error                   string                `json:"error"`
+	SortRemaining           float64               `json:"sortRemaining"`
+	CurrentCycleUsage       *codexQuotaCycleUsage `json:"currentCycleUsage,omitempty"`
+}
+
+type codexQuotaCycleUsage struct {
+	WindowStartAt   string `json:"windowStartAt"`
+	WindowEndAt     string `json:"windowEndAt"`
+	RequestCount    int64  `json:"requestCount"`
+	InputTokens     int64  `json:"inputTokens"`
+	OutputTokens    int64  `json:"outputTokens"`
+	ReasoningTokens int64  `json:"reasoningTokens"`
+	CachedTokens    int64  `json:"cachedTokens"`
+	CacheTokens     int64  `json:"cacheTokens"`
+	TotalTokens     int64  `json:"totalTokens"`
+	LastUsedAt      string `json:"lastUsedAt"`
 }
 
 type codexQuotaSummary struct {
@@ -153,6 +170,7 @@ func (s *Server) handleCodexQuotaList(w http.ResponseWriter, r *http.Request) {
 	}
 	results := fetchCodexQuotas(r.Context(), accounts)
 	results = autoDisableUnavailableCodexAccounts(s.cfg.CodexAuthDir, results)
+	results = s.attachCodexCycleUsage(r.Context(), results)
 	sort.Slice(results, func(i, j int) bool {
 		left, right := results[i], results[j]
 		if statusRank(left.Status) != statusRank(right.Status) {
@@ -206,6 +224,7 @@ func (s *Server) handleCodexQuotaRefresh(w http.ResponseWriter, r *http.Request)
 	}
 	results := fetchCodexQuotas(r.Context(), selected)
 	results = autoDisableUnavailableCodexAccounts(s.cfg.CodexAuthDir, results)
+	results = s.attachCodexCycleUsage(r.Context(), results)
 	sort.Slice(results, func(i, j int) bool {
 		return strings.ToLower(results[i].Account) < strings.ToLower(results[j].Account)
 	})
@@ -502,6 +521,178 @@ func applyWindow(account *codexQuotaAccount, window *codexUsageWindow, primary b
 	account.LongUsedPercent = used
 	account.LongRemainingPercent = &remaining
 	account.LongResetAt = resetAt
+}
+
+func (s *Server) attachCodexCycleUsage(ctx context.Context, accounts []codexQuotaAccount) []codexQuotaAccount {
+	if s == nil || s.store == nil || len(accounts) == 0 {
+		return accounts
+	}
+	minStartMS, ok := minCodexCycleStartMS(accounts)
+	if !ok {
+		return applyCodexCycleUsage(accounts, nil)
+	}
+	events, err := s.store.UsageEventsSince(ctx, minStartMS)
+	if err != nil {
+		return applyCodexCycleUsage(accounts, nil)
+	}
+	return applyCodexCycleUsage(accounts, events)
+}
+
+func minCodexCycleStartMS(accounts []codexQuotaAccount) (int64, bool) {
+	var minStart int64
+	for _, account := range accounts {
+		end, ok := parseBeijingText(codexQuotaDisplayResetAt(account))
+		if !ok {
+			continue
+		}
+		startMS := end.Add(-codexQuotaCycleDuration).UnixMilli()
+		if minStart == 0 || startMS < minStart {
+			minStart = startMS
+		}
+	}
+	return minStart, minStart > 0
+}
+
+type codexCycleUsageTarget struct {
+	Index      int
+	StartMS    int64
+	EndMS      int64
+	Identities map[string]struct{}
+}
+
+func applyCodexCycleUsage(accounts []codexQuotaAccount, events []usage.Event) []codexQuotaAccount {
+	targets := make([]codexCycleUsageTarget, 0, len(accounts))
+	identityTargets := map[string][]int{}
+	for index := range accounts {
+		end, ok := parseBeijingText(codexQuotaDisplayResetAt(accounts[index]))
+		if !ok {
+			continue
+		}
+		start := end.Add(-codexQuotaCycleDuration)
+		accounts[index].CurrentCycleUsage = &codexQuotaCycleUsage{
+			WindowStartAt: timeToBeijing(start),
+			WindowEndAt:   timeToBeijing(end),
+		}
+		identities := codexAccountUsageIdentities(accounts[index])
+		if len(identities) == 0 {
+			continue
+		}
+		targetIndex := len(targets)
+		targets = append(targets, codexCycleUsageTarget{
+			Index:      index,
+			StartMS:    start.UnixMilli(),
+			EndMS:      end.UnixMilli(),
+			Identities: identities,
+		})
+		for identity := range identities {
+			identityTargets[identity] = append(identityTargets[identity], targetIndex)
+		}
+	}
+	if len(targets) == 0 || len(events) == 0 {
+		return accounts
+	}
+	for _, event := range events {
+		if event.Failed || event.TotalTokens <= 0 {
+			continue
+		}
+		if provider := normalizeUsageIdentity(event.AuthProviderSnapshot); provider != "" && provider != "codex" {
+			continue
+		}
+		candidateTargetIndexes := map[int]struct{}{}
+		for _, identity := range usageEventIdentityKeys(event) {
+			for _, targetIndex := range identityTargets[identity] {
+				candidateTargetIndexes[targetIndex] = struct{}{}
+			}
+		}
+		for targetIndex := range candidateTargetIndexes {
+			target := targets[targetIndex]
+			if event.TimestampMS < target.StartMS || event.TimestampMS > target.EndMS {
+				continue
+			}
+			cycleUsage := accounts[target.Index].CurrentCycleUsage
+			if cycleUsage == nil {
+				continue
+			}
+			cycleUsage.RequestCount++
+			cycleUsage.InputTokens += event.InputTokens
+			cycleUsage.OutputTokens += event.OutputTokens
+			cycleUsage.ReasoningTokens += event.ReasoningTokens
+			cycleUsage.CachedTokens += event.CachedTokens
+			cycleUsage.CacheTokens += event.CacheTokens
+			cycleUsage.TotalTokens += event.TotalTokens
+			if cycleUsage.LastUsedAt == "" || event.TimestampMS > sortTimeTextToMS(cycleUsage.LastUsedAt) {
+				cycleUsage.LastUsedAt = timeToBeijing(time.UnixMilli(event.TimestampMS))
+			}
+		}
+	}
+	return accounts
+}
+
+func codexQuotaDisplayResetAt(account codexQuotaAccount) string {
+	if account.LongResetAt != "" ||
+		account.LongRemainingPercent != nil ||
+		account.LongUsedPercent != nil {
+		return account.LongResetAt
+	}
+	return account.CurrentResetAt
+}
+
+func codexAccountUsageIdentities(account codexQuotaAccount) map[string]struct{} {
+	identities := map[string]struct{}{}
+	addUsageIdentity(identities, account.File)
+	addUsageIdentity(identities, filepath.Base(account.File))
+	addUsageIdentity(identities, account.Account)
+	addUsageIdentity(identities, account.Email)
+	return identities
+}
+
+func usageEventIdentityKeys(event usage.Event) []string {
+	seen := map[string]struct{}{}
+	addUsageIdentity(seen, event.AuthFileSnapshot)
+	addUsageIdentity(seen, filepath.Base(event.AuthFileSnapshot))
+	addUsageIdentity(seen, event.AccountSnapshot)
+	addUsageIdentity(seen, event.AuthLabelSnapshot)
+	addUsageIdentity(seen, event.Source)
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+	return result
+}
+
+func addUsageIdentity(target map[string]struct{}, value string) {
+	normalized := normalizeUsageIdentity(value)
+	if normalized != "" {
+		target[normalized] = struct{}{}
+	}
+}
+
+func normalizeUsageIdentity(value string) string {
+	text := strings.TrimSpace(strings.ToLower(value))
+	if text == "" || text == "." || text == "/" {
+		return ""
+	}
+	return text
+}
+
+func parseBeijingText(value string) (time.Time, bool) {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return time.Time{}, false
+	}
+	parsed, err := time.ParseInLocation("2006-01-02 15:04:05", text, beijingLocation())
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+func sortTimeTextToMS(value string) int64 {
+	parsed, ok := parseBeijingText(value)
+	if !ok {
+		return 0
+	}
+	return parsed.UnixMilli()
 }
 
 func buildCodexQuotaSummary(accounts []codexQuotaAccount) codexQuotaSummary {

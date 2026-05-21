@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/Select';
 import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
   buildAccountPoolBalance,
+  buildCodexQuotaCycleUsage,
   buildQuotaCycleProgress,
   buildTodayUsageSummary,
   buildTodayRestoredHistory,
@@ -24,7 +25,12 @@ import {
   type TodayRestoredAccount,
 } from '@/features/codexQuota/dashboardState';
 import { useUsageData } from '@/features/monitoring/hooks/useUsageData';
-import { codexQuotaApi, type CodexQuotaAccount, type CodexQuotaResponse } from '@/services/api';
+import {
+  codexQuotaApi,
+  type CodexQuotaAccount,
+  type CodexQuotaCycleUsage,
+  type CodexQuotaResponse,
+} from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import styles from './CodexQuotaDashboardPage.module.scss';
 
@@ -208,6 +214,26 @@ const formatCompactNumber = (value: number) => {
     return `${Math.round((value / 1_000) * 10) / 10}K`;
   }
   return String(Math.round(value));
+};
+
+const formatCycleUsageMeta = (usage: CodexQuotaCycleUsage | null) => {
+  if (!usage) return '缺少重置时间';
+  if (usage.requestCount <= 0 || usage.totalTokens <= 0) return '本周期无记录';
+  return `${usage.requestCount} 次 · 最近 ${valueOrDash(usage.lastUsedAt)}`;
+};
+
+const buildCycleUsageTitle = (usage: CodexQuotaCycleUsage | null) => {
+  if (!usage) return '当前周期消耗：缺少周限额重置时间，暂不可计算';
+  return [
+    `统计窗口：${valueOrDash(usage.windowStartAt)} 至 ${valueOrDash(usage.windowEndAt)}`,
+    `总 Tokens：${formatCompactNumber(usage.totalTokens)}`,
+    `输入：${formatCompactNumber(usage.inputTokens)}`,
+    `输出：${formatCompactNumber(usage.outputTokens)}`,
+    `缓存：${formatCompactNumber(Math.max(usage.cachedTokens, usage.cacheTokens))}`,
+    `推理：${formatCompactNumber(usage.reasoningTokens)}`,
+    `调用：${usage.requestCount} 次`,
+    `最后调用：${valueOrDash(usage.lastUsedAt)}`,
+  ].join('\n');
 };
 
 const formatUsd = (value: number) =>
@@ -656,6 +682,17 @@ export function CodexQuotaDashboardPage() {
     [todayRestoredHistory]
   );
 
+  const displayCycleUsageByFile = useMemo(() => {
+    const next = new Map<string, CodexQuotaCycleUsage | null>();
+    (data?.accounts ?? []).forEach((account) => {
+      next.set(
+        account.file,
+        buildCodexQuotaCycleUsage(account, usage, todayRestoredRecords.get(account.file))
+      );
+    });
+    return next;
+  }, [data?.accounts, todayRestoredRecords, usage]);
+
   const visibleAccounts = useMemo(() => {
     const query = search.trim().toLowerCase();
     const filtered = (data?.accounts ?? []).filter((account) => {
@@ -679,6 +716,8 @@ export function CodexQuotaDashboardPage() {
         account.statusText,
         account.plan,
         account.error,
+        displayCycleUsageByFile.get(account.file)?.totalTokens,
+        displayCycleUsageByFile.get(account.file)?.requestCount,
       ]
         .join(' ')
         .toLowerCase()
@@ -711,6 +750,7 @@ export function CodexQuotaDashboardPage() {
     });
   }, [
     data?.accounts,
+    displayCycleUsageByFile,
     quickFilter,
     search,
     sortMode,
@@ -1475,6 +1515,7 @@ export function CodexQuotaDashboardPage() {
                 </th>
                 <th>账号与状态</th>
                 <th>周限额</th>
+                <th>当前额度周期消耗</th>
                 <th>导入时间</th>
                 <th>存活</th>
                 <th>凭证与刷新</th>
@@ -1484,19 +1525,19 @@ export function CodexQuotaDashboardPage() {
             <tbody>
               {loading && !data ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     正在加载账号余量...
                   </td>
                 </tr>
               ) : !data ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     点击“刷新余量”开始查询账号状态
                   </td>
                 </tr>
               ) : visibleAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.emptyCell}>
+                  <td colSpan={8} className={styles.emptyCell}>
                     没有匹配的账号
                   </td>
                 </tr>
@@ -1505,6 +1546,7 @@ export function CodexQuotaDashboardPage() {
                   const accountDisplay = getAccountListDisplay(account);
                   const restoredRecord = todayRestoredRecords.get(account.file);
                   const quotaLimitRows = buildQuotaLimitRows(account, restoredRecord);
+                  const cycleUsage = displayCycleUsageByFile.get(account.file) ?? null;
                   const accountTypeKey = normalizeAccountTypeKey(account.plan) ?? 'unknown';
                   return (
                     <tr key={account.file}>
@@ -1602,6 +1644,17 @@ export function CodexQuotaDashboardPage() {
                               </div>
                             );
                           })}
+                        </div>
+                      </td>
+                      <td>
+                        <div
+                          className={styles.cycleUsageCell}
+                          title={buildCycleUsageTitle(cycleUsage)}
+                        >
+                          <strong>
+                            {cycleUsage ? formatCompactNumber(cycleUsage.totalTokens) : '-'}
+                          </strong>
+                          <small>{formatCycleUsageMeta(cycleUsage)}</small>
                         </div>
                       </td>
                       <td>

@@ -122,3 +122,46 @@ func TestDeleteFailedEventsOnlyRemovesFailedUsage(t *testing.T) {
 		t.Fatalf("remaining event = %q, want success-event", events[0].EventHash)
 	}
 }
+
+func TestUsageEventsSinceFiltersByTimestamp(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "usage.sqlite"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+
+	_, err = db.InsertEvents(context.Background(), []usage.Event{
+		{
+			EventHash:   "old-event",
+			TimestampMS: 1000,
+			Timestamp:   "2026-05-18T00:00:00Z",
+			Model:       "gpt-test",
+			TotalTokens: 100,
+			CreatedAtMS: 1000,
+		},
+		{
+			EventHash:   "new-event",
+			TimestampMS: 2000,
+			Timestamp:   "2026-05-18T00:00:01Z",
+			Model:       "gpt-test",
+			TotalTokens: 200,
+			CreatedAtMS: 2000,
+		},
+	})
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	events, err := db.UsageEventsSince(context.Background(), 1500)
+	if err != nil {
+		t.Fatalf("usage events since: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if events[0].EventHash != "new-event" {
+		t.Fatalf("event = %q, want new-event", events[0].EventHash)
+	}
+}

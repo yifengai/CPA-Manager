@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/seakee/cpa-manager/usage-service/internal/usage"
 )
 
 func TestLoadCodexAuthFilesIncludesImportedAt(t *testing.T) {
@@ -157,6 +159,126 @@ func TestBuildCodexQuotaSummarySplitsHighBalanceBuckets(t *testing.T) {
 		if summary.Buckets[index] != want[index] {
 			t.Fatalf("bucket[%d] = %+v, want %+v", index, summary.Buckets[index], want[index])
 		}
+	}
+}
+
+func TestApplyCodexCycleUsageAggregatesCurrentWindowByAccount(t *testing.T) {
+	accounts := []codexQuotaAccount{
+		{
+			File:           "alice@example.com.json",
+			Account:        "alice@example.com",
+			Email:          "alice@example.com",
+			CurrentResetAt: "2026-05-22 00:00:00",
+		},
+		{
+			File:           "bob@example.com.json",
+			Account:        "bob@example.com",
+			Email:          "bob@example.com",
+			CurrentResetAt: "2026-05-22 00:00:00",
+		},
+	}
+	inWindow := time.Date(2026, 5, 20, 10, 0, 0, 0, beijingLocation()).UnixMilli()
+	outOfWindow := time.Date(2026, 5, 14, 23, 59, 0, 0, beijingLocation()).UnixMilli()
+
+	updated := applyCodexCycleUsage(accounts, []usage.Event{
+		{
+			TimestampMS:          inWindow,
+			AuthFileSnapshot:     "alice@example.com.json",
+			AuthProviderSnapshot: "codex",
+			InputTokens:          100,
+			OutputTokens:         20,
+			CachedTokens:         30,
+			TotalTokens:          150,
+		},
+		{
+			TimestampMS:          inWindow + 1000,
+			AccountSnapshot:      "alice@example.com",
+			AuthProviderSnapshot: "codex",
+			InputTokens:          50,
+			OutputTokens:         10,
+			ReasoningTokens:      5,
+			TotalTokens:          65,
+		},
+		{
+			TimestampMS:          inWindow,
+			AccountSnapshot:      "bob@example.com",
+			AuthProviderSnapshot: "claude",
+			TotalTokens:          999,
+		},
+		{
+			TimestampMS:     outOfWindow,
+			AccountSnapshot: "alice@example.com",
+			TotalTokens:     999,
+		},
+		{
+			TimestampMS:     inWindow,
+			AccountSnapshot: "alice@example.com",
+			TotalTokens:     999,
+			Failed:          true,
+		},
+	})
+
+	if updated[0].CurrentCycleUsage == nil {
+		t.Fatal("alice cycle usage should be populated")
+	}
+	if updated[0].CurrentCycleUsage.RequestCount != 2 {
+		t.Fatalf("request count = %d, want 2", updated[0].CurrentCycleUsage.RequestCount)
+	}
+	if updated[0].CurrentCycleUsage.TotalTokens != 215 {
+		t.Fatalf("total tokens = %d, want 215", updated[0].CurrentCycleUsage.TotalTokens)
+	}
+	if updated[0].CurrentCycleUsage.InputTokens != 150 {
+		t.Fatalf("input tokens = %d, want 150", updated[0].CurrentCycleUsage.InputTokens)
+	}
+	if updated[0].CurrentCycleUsage.OutputTokens != 30 {
+		t.Fatalf("output tokens = %d, want 30", updated[0].CurrentCycleUsage.OutputTokens)
+	}
+	if updated[0].CurrentCycleUsage.WindowStartAt != "2026-05-15 00:00:00" {
+		t.Fatalf("window start = %q", updated[0].CurrentCycleUsage.WindowStartAt)
+	}
+	if updated[1].CurrentCycleUsage == nil {
+		t.Fatal("bob cycle usage should be populated with zero usage")
+	}
+	if updated[1].CurrentCycleUsage.TotalTokens != 0 {
+		t.Fatalf("bob total tokens = %d, want 0", updated[1].CurrentCycleUsage.TotalTokens)
+	}
+}
+
+func TestApplyCodexCycleUsageUsesWeeklyResetWhenCurrentResetMissing(t *testing.T) {
+	remaining := 75
+	used := 25
+	accounts := []codexQuotaAccount{
+		{
+			File:                 "weekly@example.com.json",
+			Account:              "weekly@example.com",
+			Email:                "weekly@example.com",
+			CurrentResetAt:       "",
+			LongRemainingPercent: &remaining,
+			LongUsedPercent:      &used,
+			LongResetAt:          "2026-05-28 10:08:36",
+		},
+	}
+	inWindow := time.Date(2026, 5, 22, 10, 0, 0, 0, beijingLocation()).UnixMilli()
+
+	updated := applyCodexCycleUsage(accounts, []usage.Event{
+		{
+			TimestampMS:          inWindow,
+			AuthFileSnapshot:     "weekly@example.com.json",
+			AuthProviderSnapshot: "codex",
+			InputTokens:          400,
+			OutputTokens:         20,
+			TotalTokens:          420,
+		},
+	})
+
+	if updated[0].CurrentCycleUsage == nil {
+		t.Fatal("weekly cycle usage should be populated from long reset time")
+	}
+	if updated[0].CurrentCycleUsage.WindowEndAt != "2026-05-28 10:08:36" {
+		t.Fatalf("window end = %q", updated[0].CurrentCycleUsage.WindowEndAt)
+	}
+	if updated[0].CurrentCycleUsage.TotalTokens != 420 {
+		t.Fatalf("total tokens = %d, want 420", updated[0].CurrentCycleUsage.TotalTokens)
 	}
 }
 

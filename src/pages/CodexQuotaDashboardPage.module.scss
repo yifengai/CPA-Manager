@@ -547,7 +547,7 @@
 
 .tableWrap table {
   width: 100%;
-  min-width: 860px;
+  min-width: 1020px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 13px;
@@ -708,6 +708,28 @@
   strong,
   span {
     color: var(--text-primary);
+  }
+}
+
+.cycleUsageCell {
+  display: grid;
+  min-width: 118px;
+  gap: 4px;
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  small {
+    max-width: 150px;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

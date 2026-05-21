@@ -1,4 +1,4 @@
-import type { CodexQuotaAccount } from '@/services/api';
+import type { CodexQuotaAccount, CodexQuotaCycleUsage } from '@/services/api';
 import {
   calculateCost,
   collectUsageDetails,
@@ -70,6 +70,7 @@ export interface QuotaCycleProgress {
 
 const gpt55InputUsdPerMillionTokens = 5;
 const defaultAccountCycleTokens = 4_000_000;
+const quotaCycleDurationMs = 7 * 24 * 60 * 60 * 1000;
 
 export interface TodayUsageSummary {
   hasUsageData: boolean;
@@ -133,6 +134,168 @@ export const buildQuotaCycleProgress = (
     usedWidthPercent,
     remainingWidthPercent: Math.max(0, 100 - usedWidthPercent),
   };
+};
+
+const hasWeeklyQuotaWindow = (account: CodexQuotaAccount) =>
+  typeof account.longRemainingPercent === 'number' ||
+  typeof account.longUsedPercent === 'number' ||
+  account.longResetAt !== '';
+
+export const getCodexQuotaCycleResetAt = (
+  account: CodexQuotaAccount,
+  restoredRecord?: TodayRestoredAccount
+) => {
+  const restoredResetAt = restoredRecord?.resetAfter?.trim();
+  if (restoredResetAt) return restoredResetAt;
+  if (hasWeeklyQuotaWindow(account) && account.longResetAt) return account.longResetAt;
+  return account.currentResetAt;
+};
+
+const parseBeijingTextMs = (value?: string | null) => {
+  const text = value?.trim() ?? '';
+  if (!text) return null;
+  const parsed = Date.parse(`${text.replace(' ', 'T')}+08:00`);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatBeijingText = (timeMs: number) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(timeMs));
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  return `${value('year')}-${value('month')}-${value('day')} ${value('hour')}:${value(
+    'minute'
+  )}:${value('second')}`;
+};
+
+const isSameCycleWindowEnd = (usage: CodexQuotaCycleUsage | undefined, windowEndMs: number) => {
+  if (!usage?.windowEndAt) return false;
+  const usageEndMs = parseBeijingTextMs(usage.windowEndAt);
+  return usageEndMs !== null && Math.abs(usageEndMs - windowEndMs) < 1000;
+};
+
+const normalizeUsageIdentity = (value?: string | number | null) => {
+  const text = value === null || value === undefined ? '' : String(value);
+  const normalized = text.trim().toLowerCase();
+  return normalized && normalized !== '.' && normalized !== '/' ? normalized : '';
+};
+
+const basenameIdentity = (value?: string | number | null) => {
+  const normalized = normalizeUsageIdentity(value);
+  if (!normalized) return '';
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : normalized;
+};
+
+const addAccountUsageIdentity = (target: Set<string>, value?: string | number | null) => {
+  const normalized = normalizeUsageIdentity(value);
+  if (!normalized) return;
+  target.add(normalized);
+  target.add(`t:${normalized}`);
+};
+
+const buildAccountUsageIdentities = (account: CodexQuotaAccount) => {
+  const identities = new Set<string>();
+  addAccountUsageIdentity(identities, account.file);
+  addAccountUsageIdentity(identities, basenameIdentity(account.file));
+  addAccountUsageIdentity(identities, account.account);
+  addAccountUsageIdentity(identities, account.email);
+  return identities;
+};
+
+const usageDetailMatchesAccount = (
+  detail: ReturnType<typeof collectUsageDetails>[number],
+  identities: Set<string>
+) => {
+  const candidates = [
+    detail.auth_file_snapshot,
+    basenameIdentity(detail.auth_file_snapshot),
+    detail.auth_label_snapshot,
+    detail.account_snapshot,
+    detail.source,
+  ];
+  return candidates.some((candidate) => identities.has(normalizeUsageIdentity(candidate)));
+};
+
+const positiveNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+export const buildCodexQuotaCycleUsage = (
+  account: CodexQuotaAccount,
+  usageData: unknown,
+  restoredRecord?: TodayRestoredAccount
+): CodexQuotaCycleUsage | null => {
+  const windowEndAt = getCodexQuotaCycleResetAt(account, restoredRecord);
+  const windowEndMs = parseBeijingTextMs(windowEndAt);
+  if (windowEndMs === null) return null;
+
+  const usageDetails = usageData ? collectUsageDetails(usageData) : [];
+  if (usageDetails.length === 0 && isSameCycleWindowEnd(account.currentCycleUsage, windowEndMs)) {
+    return account.currentCycleUsage ?? null;
+  }
+
+  const windowStartMs = windowEndMs - quotaCycleDurationMs;
+  const result: CodexQuotaCycleUsage = {
+    windowStartAt: formatBeijingText(windowStartMs),
+    windowEndAt: formatBeijingText(windowEndMs),
+    requestCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cachedTokens: 0,
+    cacheTokens: 0,
+    totalTokens: 0,
+    lastUsedAt: '',
+  };
+  if (usageDetails.length === 0) return result;
+
+  const identities = buildAccountUsageIdentities(account);
+  if (identities.size === 0) return result;
+
+  let lastUsedMs = 0;
+  usageDetails.forEach((detail) => {
+    const provider = normalizeUsageIdentity(
+      detail.auth_provider_snapshot ?? detail.authProviderSnapshot
+    );
+    if (provider && provider !== 'codex') return;
+    if (detail.failed) return;
+
+    const timestampMs =
+      typeof detail.__timestampMs === 'number' && detail.__timestampMs > 0
+        ? detail.__timestampMs
+        : Date.parse(detail.timestamp);
+    if (!Number.isFinite(timestampMs) || timestampMs < windowStartMs || timestampMs > windowEndMs) {
+      return;
+    }
+    if (!usageDetailMatchesAccount(detail, identities)) return;
+
+    const totalTokens = Math.max(
+      positiveNumber(detail.tokens.total_tokens),
+      extractTotalTokens(detail)
+    );
+    if (totalTokens <= 0) return;
+
+    result.requestCount += 1;
+    result.inputTokens += positiveNumber(detail.tokens.input_tokens);
+    result.outputTokens += positiveNumber(detail.tokens.output_tokens);
+    result.reasoningTokens += positiveNumber(detail.tokens.reasoning_tokens);
+    result.cachedTokens += positiveNumber(detail.tokens.cached_tokens);
+    result.cacheTokens += positiveNumber(detail.tokens.cache_tokens);
+    result.totalTokens += totalTokens;
+    if (timestampMs > lastUsedMs) lastUsedMs = timestampMs;
+  });
+
+  if (lastUsedMs > 0) result.lastUsedAt = formatBeijingText(lastUsedMs);
+  return result;
 };
 
 export const getAccountSurvivalMs = (importedAt?: string | null, nowMs = Date.now()) => {
