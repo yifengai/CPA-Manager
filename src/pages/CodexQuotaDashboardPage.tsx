@@ -6,6 +6,7 @@ import { IconRefreshCw, IconSearch, IconTrash2 } from '@/components/ui/icons';
 import {
   buildAccountPoolBalance,
   buildCodexQuotaCycleUsage,
+  buildCodexQuotaCycleUsageSignal,
   buildQuotaCycleProgress,
   buildTodayUsageSummary,
   buildTodayRestoredHistory,
@@ -32,6 +33,8 @@ import {
   codexQuotaApi,
   type CodexQuotaAccount,
   type CodexQuotaCycleUsage,
+  type CodexQuotaProtectionResponse,
+  type CodexQuotaProtectionResult,
   type CodexQuotaResponse,
 } from '@/services/api';
 import { useAuthStore, useNotificationStore } from '@/stores';
@@ -221,18 +224,32 @@ const formatCycleUsageMeta = (usage: CodexQuotaCycleUsage | null) => {
   return `${usage.requestCount} 次 · 最近 ${valueOrDash(usage.lastUsedAt)}`;
 };
 
-const buildCycleUsageTitle = (usage: CodexQuotaCycleUsage | null) => {
+const buildCycleUsageTitle = (
+  usage: CodexQuotaCycleUsage | null,
+  signal: ReturnType<typeof buildCodexQuotaCycleUsageSignal>,
+  accountCycleTokens: number
+) => {
   if (!usage) return '当前周期消耗：缺少周限额重置时间，暂不可计算';
   return [
     `统计窗口：${valueOrDash(usage.windowStartAt)} 至 ${valueOrDash(usage.windowEndAt)}`,
-    `总 Tokens：${formatCompactNumber(usage.totalTokens)}`,
+    `本地已统计：${formatCompactNumber(usage.totalTokens)} / ${formatCompactNumber(accountCycleTokens)}`,
+    `本地已用：${
+      signal.localUsedPercent === null ? '-' : formatPercentValue(signal.localUsedPercent)
+    }`,
+    `周限额已用：${
+      signal.officialUsedPercent === null ? '-' : formatPercentValue(signal.officialUsedPercent)
+    }`,
+    `可信度：${signal.confidenceLabel}`,
+    signal.notice ? `提示：${signal.notice}` : '',
     `输入：${formatCompactNumber(usage.inputTokens)}`,
     `输出：${formatCompactNumber(usage.outputTokens)}`,
     `缓存：${formatCompactNumber(Math.max(usage.cachedTokens, usage.cacheTokens))}`,
     `推理：${formatCompactNumber(usage.reasoningTokens)}`,
     `调用：${usage.requestCount} 次`,
     `最后调用：${valueOrDash(usage.lastUsedAt)}`,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 };
 
 const formatUsd = (value: number) =>
@@ -255,6 +272,78 @@ const formatUsdPerMillionTokens = (cycleCostUsd: number, cycleTokens: number) =>
   }
   const value = (cycleCostUsd / cycleTokens) * 1_000_000;
   return `${formatUsd(value)}/1M Tokens`;
+};
+
+const protectionActionLabel = (action: CodexQuotaProtectionResult['action']) => {
+  if (action === 'would_protect') return '建议停用';
+  if (action === 'protected') return '已停用';
+  if (action === 'already_disabled') return '已停用';
+  if (action === 'observe') return '观察';
+  if (action === 'error') return '错误';
+  return '保留';
+};
+
+const formatProtectionFailureTypes = (types: Record<string, number>) => {
+  const entries = Object.entries(types).filter(([, count]) => count > 0);
+  if (entries.length === 0) return '无失败类型';
+  const labels: Record<string, string> = {
+    auth: '认证',
+    permission: '权限',
+    limited: '受限',
+    timeout: '超时',
+    upstream: '上游',
+    error: '错误',
+  };
+  return entries.map(([key, count]) => `${labels[key] ?? key} ${count}`).join('，');
+};
+
+const protectionPreviewCandidates = (preview: CodexQuotaProtectionResponse) =>
+  preview.results.filter((result) => result.action === 'would_protect');
+
+const buildProtectionPreviewMessage = (preview: CodexQuotaProtectionResponse) => {
+  const candidates = protectionPreviewCandidates(preview);
+  const observed = preview.results.filter((result) => result.action === 'observe');
+  const alreadyDisabled = preview.results.filter((result) => result.action === 'already_disabled');
+  const topResults = [
+    ...candidates,
+    ...alreadyDisabled,
+    ...observed,
+    ...preview.results.filter((result) => result.action === 'error'),
+  ].slice(0, 8);
+
+  return (
+    <div className={styles.protectPreview}>
+      <div className={styles.protectPreviewStats}>
+        <span>扫描 {preview.scannedRequests} 条请求</span>
+        <span>命中 {preview.matchedAccounts} 个账号</span>
+        <span>建议停用 {candidates.length} 个</span>
+        <span>观察 {observed.length} 个</span>
+      </div>
+      <p>
+        这是预览结果，还没有修改任何账号。确认后才会把建议停用的账号写入
+        <code>disabled=true</code>，移出调用池。
+      </p>
+      {topResults.length > 0 ? (
+        <div className={styles.protectPreviewList}>
+          {topResults.map((result) => (
+            <div key={`${result.file}-${result.action}`} className={styles.protectPreviewItem}>
+              <strong>{result.label || result.file}</strong>
+              <span>{protectionActionLabel(result.action)}</span>
+              <small>
+                {result.reason} · 连续失败 {result.consecutiveFailures} 次 ·{' '}
+                {formatProtectionFailureTypes(result.failureTypes)}
+              </small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p>最近请求没有触发保护规则，不需要停用账号。</p>
+      )}
+      {topResults.length > 0 && preview.results.length > topResults.length ? (
+        <p>仅展示前 {topResults.length} 条结果，其余账号会按同一规则处理。</p>
+      ) : null}
+    </div>
+  );
 };
 
 const sortTime = (value: string) => {
@@ -1040,31 +1129,42 @@ export function CodexQuotaDashboardPage() {
     });
   };
 
-  const confirmProtectAccountPool = () => {
-    showConfirmation({
-      title: '账号池保护',
-      message:
-        '将扫描最近请求日志，自动停用 401、403、429 等明确不可继续承接的 Codex 账号；连续超时或上游错误达到保护阈值时也会停用。成功请求和偶发单次失败不会被停用。',
-      confirmText: '开始保护',
-      cancelText: '取消',
-      variant: 'danger',
-      onConfirm: async () => {
-        setProtectingAccountPool(true);
-        try {
-          const result = await codexQuotaApi.protectAccountPool();
-          await loadQuota();
-          showNotification(
-            `账号池保护完成：扫描 ${result.scannedRequests} 条请求，新增停用 ${result.protectionCount} 个，已停用 ${result.alreadyDisabled} 个，观察 ${result.observationCount} 个`,
-            result.protectionCount > 0 ? 'success' : 'info'
-          );
-        } catch (err) {
-          const message = err instanceof Error ? err.message : '账号池保护失败';
-          showNotification(`账号池保护失败：${message}`, 'error');
-        } finally {
-          setProtectingAccountPool(false);
-        }
-      },
-    });
+  const executeProtectAccountPool = async () => {
+    setProtectingAccountPool(true);
+    try {
+      const result = await codexQuotaApi.protectAccountPool();
+      await loadQuota();
+      showNotification(
+        `账号池保护完成：扫描 ${result.scannedRequests} 条请求，新增停用 ${result.protectionCount} 个，已停用 ${result.alreadyDisabled} 个，观察 ${result.observationCount} 个`,
+        result.protectionCount > 0 ? 'success' : 'info'
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '账号池保护失败';
+      showNotification(`账号池保护失败：${message}`, 'error');
+    } finally {
+      setProtectingAccountPool(false);
+    }
+  };
+
+  const previewProtectAccountPool = async () => {
+    setProtectingAccountPool(true);
+    try {
+      const preview = await codexQuotaApi.protectAccountPool({ dryRun: true });
+      const candidates = protectionPreviewCandidates(preview);
+      showConfirmation({
+        title: '账号池保护预览',
+        message: buildProtectionPreviewMessage(preview),
+        confirmText: candidates.length > 0 ? `确认停用 ${candidates.length} 个` : '知道了',
+        cancelText: candidates.length > 0 ? '取消' : '关闭',
+        variant: candidates.length > 0 ? 'danger' : 'secondary',
+        onConfirm: candidates.length > 0 ? executeProtectAccountPool : () => undefined,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '账号池保护预览失败';
+      showNotification(`账号池保护预览失败：${message}`, 'error');
+    } finally {
+      setProtectingAccountPool(false);
+    }
   };
 
   const summary = data?.summary;
@@ -1200,7 +1300,7 @@ export function CodexQuotaDashboardPage() {
             <span>刷新余量</span>
           </Button>
           <Button
-            onClick={confirmProtectAccountPool}
+            onClick={() => void previewProtectAccountPool()}
             loading={protectingAccountPool}
             disabled={disabled || protectingAccountPool}
             size="sm"
@@ -1600,6 +1700,11 @@ export function CodexQuotaDashboardPage() {
                   const restoredRecord = todayRestoredRecords.get(account.file);
                   const quotaLimitRows = buildQuotaLimitRows(account, restoredRecord);
                   const cycleUsage = displayCycleUsageByFile.get(account.file) ?? null;
+                  const cycleUsageSignal = buildCodexQuotaCycleUsageSignal(
+                    account,
+                    cycleUsage,
+                    poolSettings
+                  );
                   const accountTypeKey = normalizeAccountTypeKey(account.plan) ?? 'unknown';
                   return (
                     <tr key={account.file}>
@@ -1702,12 +1807,47 @@ export function CodexQuotaDashboardPage() {
                       <td className={styles.cycleUsageColumn}>
                         <div
                           className={styles.cycleUsageCell}
-                          title={buildCycleUsageTitle(cycleUsage)}
+                          title={buildCycleUsageTitle(
+                            cycleUsage,
+                            cycleUsageSignal,
+                            poolSettings.accountCycleTokens
+                          )}
                         >
                           <strong>
-                            {cycleUsage ? formatCompactNumber(cycleUsage.totalTokens) : '-'}
+                            {cycleUsage
+                              ? `${formatCompactNumber(cycleUsage.totalTokens)} / ${formatCompactNumber(
+                                  poolSettings.accountCycleTokens
+                                )}`
+                              : '-'}
                           </strong>
-                          <small>{formatCycleUsageMeta(cycleUsage)}</small>
+                          <div
+                            className={styles.usageProgressTrack}
+                            aria-label={`本周期已统计 ${
+                              cycleUsageSignal.localUsedPercent === null
+                                ? '-'
+                                : formatPercentValue(cycleUsageSignal.localUsedPercent)
+                            }`}
+                          >
+                            <span
+                              className={styles.usageProgressBar}
+                              style={{ width: `${cycleUsageSignal.progressWidthPercent}%` }}
+                            />
+                          </div>
+                          <small className={styles.cycleUsageMetaLine}>
+                            <span
+                              className={`${styles.cycleUsageConfidence} ${
+                                styles[`cycleUsageConfidence_${cycleUsageSignal.confidence}`]
+                              }`}
+                            >
+                              {cycleUsageSignal.confidenceLabel}
+                            </span>
+                            <span>{formatCycleUsageMeta(cycleUsage)}</span>
+                          </small>
+                          {cycleUsageSignal.notice ? (
+                            <small className={styles.cycleUsageNotice}>
+                              {cycleUsageSignal.notice}
+                            </small>
+                          ) : null}
                         </div>
                       </td>
                       <td className={styles.importedColumn}>

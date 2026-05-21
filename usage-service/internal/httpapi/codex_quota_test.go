@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/seakee/cpa-manager/usage-service/internal/config"
 	"github.com/seakee/cpa-manager/usage-service/internal/usage"
 )
 
@@ -111,6 +112,58 @@ func TestFetchCodexQuotaQueriesDisabledAccountsButKeepsThemDisabled(t *testing.T
 	if account.CurrentResetAt == "" {
 		t.Fatal("current reset time should be populated for disabled accounts")
 	}
+}
+
+func TestHandleCodexQuotaListOnlyQueriesAndDoesNotDisableAuth(t *testing.T) {
+	authDir := t.TempDir()
+	writeTestCodexAuth(t, authDir, "limited@example.com.json", false)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"plan_type": "free",
+			"rate_limit": {
+				"allowed": false,
+				"limit_reached": true,
+				"primary_window": {
+					"used_percent": 100,
+					"reset_at": 1770000000
+				}
+			},
+			"credits": {}
+		}`))
+	}))
+	defer upstream.Close()
+
+	previousURL := codexUsageURL
+	codexUsageURL = upstream.URL
+	t.Cleanup(func() {
+		codexUsageURL = previousURL
+	})
+
+	server := &Server{cfg: configWithCodexAuthDir(authDir)}
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/codex-quota", nil)
+	recorder := httptest.NewRecorder()
+
+	server.handleCodexQuotaList(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	if readDisabledFlag(t, authDir, "limited@example.com.json") {
+		t.Fatal("querying quota should not write disabled=true to auth file")
+	}
+	var payload codexQuotaResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Accounts) != 1 || payload.Accounts[0].Status != "limited" {
+		t.Fatalf("accounts = %+v, want limited account in response", payload.Accounts)
+	}
+}
+
+func configWithCodexAuthDir(authDir string) config.Config {
+	return config.Config{CodexAuthDir: authDir}
 }
 
 func TestBuildCodexQuotaSummaryCountsDisabledByLocalSwitch(t *testing.T) {
@@ -279,78 +332,6 @@ func TestApplyCodexCycleUsageUsesWeeklyResetWhenCurrentResetMissing(t *testing.T
 	}
 	if updated[0].CurrentCycleUsage.TotalTokens != 420 {
 		t.Fatalf("total tokens = %d, want 420", updated[0].CurrentCycleUsage.TotalTokens)
-	}
-}
-
-func TestAutoDisableUnavailableCodexAccountsDisablesLimitedAndAuthError(t *testing.T) {
-	authDir := t.TempDir()
-	writeTestCodexAuth(t, authDir, "limited.json", false)
-	writeTestCodexAuth(t, authDir, "low.json", false)
-	writeTestCodexAuth(t, authDir, "buffer.json", false)
-	writeTestCodexAuth(t, authDir, "error.json", false)
-	writeTestCodexAuth(t, authDir, "timeout.json", false)
-	writeTestCodexAuth(t, authDir, "available.json", false)
-	lowRemaining := 3
-	bufferRemaining := 4
-
-	accounts := []codexQuotaAccount{
-		{File: "limited.json", Status: "limited", StatusText: "受限"},
-		{File: "low.json", Status: "available", StatusText: "可用", CurrentRemainingPercent: &lowRemaining},
-		{File: "buffer.json", Status: "available", StatusText: "可用", CurrentRemainingPercent: &bufferRemaining},
-		{File: "error.json", Status: "error", StatusText: "HTTP 401", Error: "token invalidated"},
-		{File: "timeout.json", Status: "error", StatusText: "查询失败", Error: "context deadline exceeded"},
-		{File: "available.json", Status: "available", StatusText: "可用"},
-	}
-
-	updated := autoDisableUnavailableCodexAccounts(authDir, accounts)
-
-	if !updated[0].Disabled || updated[0].Status != "disabled" {
-		t.Fatalf("limited account = %+v, want disabled", updated[0])
-	}
-	if updated[0].StatusText != "已自动停用：受限" {
-		t.Fatalf("limited status text = %q", updated[0].StatusText)
-	}
-	if !updated[1].Disabled || updated[1].Status != "disabled" {
-		t.Fatalf("low remaining account = %+v, want disabled", updated[1])
-	}
-	if updated[1].StatusText != "已自动停用：低余量" {
-		t.Fatalf("low remaining status text = %q", updated[1].StatusText)
-	}
-	if updated[1].Error != "余量低于等于3%，默认停用" {
-		t.Fatalf("low remaining error = %q", updated[1].Error)
-	}
-	if updated[2].Disabled || updated[2].Status != "available" {
-		t.Fatalf("buffer account = %+v, want unchanged available", updated[2])
-	}
-	if !updated[3].Disabled || updated[3].Status != "disabled" {
-		t.Fatalf("error account = %+v, want disabled", updated[3])
-	}
-	if updated[3].StatusText != "已自动停用：异常" {
-		t.Fatalf("error status text = %q", updated[3].StatusText)
-	}
-	if updated[4].Disabled || updated[4].Status != "error" {
-		t.Fatalf("timeout account = %+v, want unchanged error", updated[4])
-	}
-	if updated[5].Disabled || updated[5].Status != "available" {
-		t.Fatalf("available account = %+v, want unchanged", updated[5])
-	}
-	if !readDisabledFlag(t, authDir, "limited.json") {
-		t.Fatal("limited auth file should be disabled")
-	}
-	if !readDisabledFlag(t, authDir, "low.json") {
-		t.Fatal("low remaining auth file should be disabled")
-	}
-	if readDisabledFlag(t, authDir, "buffer.json") {
-		t.Fatal("buffer auth file should stay enabled")
-	}
-	if !readDisabledFlag(t, authDir, "error.json") {
-		t.Fatal("error auth file should be disabled")
-	}
-	if readDisabledFlag(t, authDir, "timeout.json") {
-		t.Fatal("timeout auth file should stay enabled")
-	}
-	if readDisabledFlag(t, authDir, "available.json") {
-		t.Fatal("available auth file should stay enabled")
 	}
 }
 

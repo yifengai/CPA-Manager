@@ -107,9 +107,13 @@ export const codexQuotaApi = {
     }),
 
   refreshSelected: (files: string[]) =>
-    apiClient.post<CodexQuotaResponse>('/codex-quota/refresh', { files }, {
-      timeout: CODEX_QUOTA_REQUEST_TIMEOUT_MS,
-    }),
+    apiClient.post<CodexQuotaResponse>(
+      '/codex-quota/refresh',
+      { files },
+      {
+        timeout: CODEX_QUOTA_REQUEST_TIMEOUT_MS,
+      }
+    ),
 
   setDisabled: (file: string, disabled: boolean) =>
     apiClient.patch<{ status: 'ok'; file: string; disabled: boolean }>('/codex-quota/account', {
@@ -124,8 +128,12 @@ export const codexQuotaApi = {
 
   clearFailedUsage: () => apiClient.delete<ClearFailedUsageResponse>('/usage/failed'),
 
-  protectAccountPool: () =>
+  protectAccountPool: (options: { dryRun?: boolean; limit?: number } = {}) =>
     apiClient.post<CodexQuotaProtectionResponse>('/codex-quota/protect', undefined, {
+      params: {
+        ...(options.dryRun === undefined ? {} : { dryRun: String(options.dryRun) }),
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+      },
       timeout: CODEX_QUOTA_REQUEST_TIMEOUT_MS,
     }),
 };

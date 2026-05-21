@@ -68,6 +68,18 @@ export interface QuotaCycleProgress {
   remainingWidthPercent: number;
 }
 
+export type CodexQuotaCycleUsageConfidence = 'high' | 'medium' | 'low' | 'unknown';
+
+export interface CodexQuotaCycleUsageSignal {
+  hasUsageData: boolean;
+  localUsedPercent: number | null;
+  officialUsedPercent: number | null;
+  progressWidthPercent: number;
+  confidence: CodexQuotaCycleUsageConfidence;
+  confidenceLabel: string;
+  notice: string;
+}
+
 const gpt55InputUsdPerMillionTokens = 5;
 const defaultAccountCycleTokens = 4_000_000;
 const quotaCycleDurationMs = 7 * 24 * 60 * 60 * 1000;
@@ -146,6 +158,21 @@ export const getCodexQuotaDisplayRemainingPercent = (account: CodexQuotaAccount)
   hasCodexQuotaWeeklyWindow(account)
     ? (account.longRemainingPercent ?? account.currentRemainingPercent)
     : account.currentRemainingPercent;
+
+export const getCodexQuotaDisplayUsedPercent = (account: CodexQuotaAccount) =>
+  hasCodexQuotaWeeklyWindow(account)
+    ? (account.longUsedPercent ??
+      (typeof account.longRemainingPercent === 'number'
+        ? 100 - account.longRemainingPercent
+        : undefined) ??
+      account.currentUsedPercent ??
+      (typeof account.currentRemainingPercent === 'number'
+        ? 100 - account.currentRemainingPercent
+        : undefined))
+    : (account.currentUsedPercent ??
+      (typeof account.currentRemainingPercent === 'number'
+        ? 100 - account.currentRemainingPercent
+        : undefined));
 
 export const getCodexQuotaDisplayResetAt = (account: CodexQuotaAccount) =>
   hasCodexQuotaWeeklyWindow(account) && account.longResetAt
@@ -357,6 +384,97 @@ const sanitizeAccountPoolBalanceSettings = (
       : defaultAccountPoolBalanceSettings.accountCycleCalls,
 });
 
+const roundedPercent = (value: number) => Math.round(value * 10) / 10;
+
+const cycleUsageConfidenceLabels: Record<CodexQuotaCycleUsageConfidence, string> = {
+  high: '可信度高',
+  medium: '可信度中',
+  low: '可信度低',
+  unknown: '缺少依据',
+};
+
+const buildCycleUsageSignalResult = (
+  input: Omit<CodexQuotaCycleUsageSignal, 'confidenceLabel'>
+): CodexQuotaCycleUsageSignal => ({
+  ...input,
+  confidenceLabel: cycleUsageConfidenceLabels[input.confidence],
+});
+
+export const buildCodexQuotaCycleUsageSignal = (
+  account: CodexQuotaAccount,
+  usage: CodexQuotaCycleUsage | null,
+  rawSettings: AccountPoolBalanceSettings = defaultAccountPoolBalanceSettings
+): CodexQuotaCycleUsageSignal => {
+  const settings = sanitizeAccountPoolBalanceSettings(rawSettings);
+  const officialUsedPercent = clampPercentValue(getCodexQuotaDisplayUsedPercent(account));
+  if (!usage) {
+    return buildCycleUsageSignalResult({
+      hasUsageData: false,
+      localUsedPercent: null,
+      officialUsedPercent,
+      progressWidthPercent: 0,
+      confidence: 'unknown',
+      notice: '缺少周限额重置时间，暂不可计算',
+    });
+  }
+
+  const localUsedPercent = roundedPercent(
+    Math.max(0, (positiveNumber(usage.totalTokens) / settings.accountCycleTokens) * 100)
+  );
+  const progressWidthPercent = clampPercentValue(localUsedPercent) ?? 0;
+  if (usage.requestCount <= 0 || usage.totalTokens <= 0) {
+    return buildCycleUsageSignalResult({
+      hasUsageData: false,
+      localUsedPercent,
+      officialUsedPercent,
+      progressWidthPercent,
+      confidence: 'low',
+      notice: '本周期暂无本地成功调用记录',
+    });
+  }
+
+  if (officialUsedPercent === null) {
+    return buildCycleUsageSignalResult({
+      hasUsageData: true,
+      localUsedPercent,
+      officialUsedPercent,
+      progressWidthPercent,
+      confidence: 'medium',
+      notice: '缺少周限额已用百分比，仅按本地 Usage 统计',
+    });
+  }
+
+  const difference = Math.abs(localUsedPercent - officialUsedPercent);
+  if (difference <= 15) {
+    return buildCycleUsageSignalResult({
+      hasUsageData: true,
+      localUsedPercent,
+      officialUsedPercent,
+      progressWidthPercent,
+      confidence: 'high',
+      notice: '',
+    });
+  }
+  if (difference <= 40) {
+    return buildCycleUsageSignalResult({
+      hasUsageData: true,
+      localUsedPercent,
+      officialUsedPercent,
+      progressWidthPercent,
+      confidence: 'medium',
+      notice: '本地记录与周限额存在差异，可作为参考值',
+    });
+  }
+  return buildCycleUsageSignalResult({
+    hasUsageData: true,
+    localUsedPercent,
+    officialUsedPercent,
+    progressWidthPercent,
+    confidence: 'low',
+    notice: '本地记录与周限额差异较大，可能缺少历史 Usage 数据',
+  });
+};
+
 export const buildAccountPoolBalance = (
   accounts: CodexQuotaAccount[],
   scope: AccountPoolBalanceScope,
@@ -513,7 +631,7 @@ export const normalizeQuotaErrorReason = (account: CodexQuotaAccount) => {
   ) {
     return getCodexQuotaDisplayRemainingPercent(account) === 0
       ? '账号已达调用上限'
-      : `余量低于等于${lowQuotaAutoDisableThreshold}%，默认停用`;
+      : `余量低于等于${lowQuotaAutoDisableThreshold}%，建议停用`;
   }
   if (account.status === 'error') return '查询失败';
   return '-';

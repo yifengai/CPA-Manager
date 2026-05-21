@@ -22,7 +22,6 @@ const (
 	codexQuotaWorkers        = 32
 	codexQuotaRequestTimeout = 12 * time.Second
 	codexQuotaCycleDuration  = 7 * 24 * time.Hour
-	codexLowQuotaThreshold   = 3
 )
 
 var codexUsageURL = "https://chatgpt.com/backend-api/wham/usage"
@@ -170,7 +169,6 @@ func (s *Server) handleCodexQuotaList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	results := fetchCodexQuotas(r.Context(), accounts)
-	results = autoDisableUnavailableCodexAccounts(s.cfg.CodexAuthDir, results)
 	results = s.attachCodexCycleUsage(r.Context(), results)
 	sort.Slice(results, func(i, j int) bool {
 		left, right := results[i], results[j]
@@ -224,7 +222,6 @@ func (s *Server) handleCodexQuotaRefresh(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	results := fetchCodexQuotas(r.Context(), selected)
-	results = autoDisableUnavailableCodexAccounts(s.cfg.CodexAuthDir, results)
 	results = s.attachCodexCycleUsage(r.Context(), results)
 	sort.Slice(results, func(i, j int) bool {
 		return strings.ToLower(results[i].Account) < strings.ToLower(results[j].Account)
@@ -432,70 +429,6 @@ func fetchCodexQuota(ctx context.Context, account codexAuthFile) codexQuotaAccou
 		base.SortRemaining = float64(*base.CurrentRemainingPercent)
 	}
 	return base
-}
-
-func autoDisableUnavailableCodexAccounts(authDir string, accounts []codexQuotaAccount) []codexQuotaAccount {
-	updated := make([]codexQuotaAccount, len(accounts))
-	copy(updated, accounts)
-	for index := range updated {
-		account := &updated[index]
-		if !shouldAutoDisableCodexQuotaAccount(*account) {
-			continue
-		}
-		originalStatus := account.Status
-		originalText := account.StatusText
-		if _, err := updateCodexAuthDisabled(authDir, account.File, true); err != nil {
-			account.Error = strings.TrimSpace(strings.Join([]string{account.Error, "自动停用失败: " + err.Error()}, " "))
-			continue
-		}
-		account.Disabled = true
-		account.Status = "disabled"
-		if isLowRemainingCodexQuotaAccount(*account) && originalStatus != "limited" {
-			account.StatusText = "已自动停用：低余量"
-			account.Error = fmt.Sprintf("余量低于等于%d%%，默认停用", codexLowQuotaThreshold)
-			continue
-		}
-		if originalStatus == "limited" {
-			account.StatusText = "已自动停用：受限"
-		} else {
-			account.StatusText = "已自动停用：异常"
-		}
-		if strings.TrimSpace(account.Error) == "" {
-			account.Error = originalText
-		}
-	}
-	return updated
-}
-
-func shouldAutoDisableCodexQuotaAccount(account codexQuotaAccount) bool {
-	if account.Disabled {
-		return false
-	}
-	if isLowRemainingCodexQuotaAccount(account) {
-		return true
-	}
-	if account.Status == "limited" {
-		return true
-	}
-	if account.Status != "error" {
-		return false
-	}
-	text := strings.ToLower(strings.TrimSpace(account.StatusText + " " + account.Error))
-	if text == "" {
-		return false
-	}
-	return strings.Contains(text, "缺少token") ||
-		strings.Contains(text, "access_token") ||
-		strings.Contains(text, "token_invalidated") ||
-		strings.Contains(text, "authentication token has been invalidated") ||
-		strings.Contains(text, "unauthorized") ||
-		strings.Contains(text, "http 401") ||
-		strings.Contains(text, "http 403")
-}
-
-func isLowRemainingCodexQuotaAccount(account codexQuotaAccount) bool {
-	return account.CurrentRemainingPercent != nil &&
-		*account.CurrentRemainingPercent <= codexLowQuotaThreshold
 }
 
 func applyWindow(account *codexQuotaAccount, window *codexUsageWindow, primary bool) {

@@ -3,6 +3,7 @@ import type { CodexQuotaAccount } from '@/services/api';
 import {
   buildAccountPoolBalance,
   buildCodexQuotaCycleUsage,
+  buildCodexQuotaCycleUsageSignal,
   buildQuotaCycleProgress,
   buildTodayUsageSummary,
   buildTodayRestoredHistory,
@@ -185,6 +186,64 @@ describe('codex quota dashboard state', () => {
       windowEndAt: '2026-05-25 20:00:00',
       requestCount: 0,
       totalTokens: 0,
+    });
+  });
+
+  it('marks cycle usage confidence by comparing local logs with displayed weekly usage', () => {
+    const account = createAccount({
+      longUsedPercent: 80,
+      longRemainingPercent: 20,
+    });
+
+    expect(
+      buildCodexQuotaCycleUsageSignal(
+        account,
+        {
+          windowStartAt: '2026-05-18 20:00:00',
+          windowEndAt: '2026-05-25 20:00:00',
+          requestCount: 23,
+          inputTokens: 3_100_000,
+          outputTokens: 100_000,
+          reasoningTokens: 0,
+          cachedTokens: 0,
+          cacheTokens: 0,
+          totalTokens: 3_200_000,
+          lastUsedAt: '2026-05-20 01:23:06',
+        },
+        { accountCycleTokens: 4_000_000, accountCycleCostUsd: 20, accountCycleCalls: 34 }
+      )
+    ).toMatchObject({
+      confidence: 'high',
+      confidenceLabel: '可信度高',
+      localUsedPercent: 80,
+      officialUsedPercent: 80,
+      progressWidthPercent: 80,
+      notice: '',
+    });
+
+    expect(
+      buildCodexQuotaCycleUsageSignal(
+        account,
+        {
+          windowStartAt: '2026-05-18 20:00:00',
+          windowEndAt: '2026-05-25 20:00:00',
+          requestCount: 2,
+          inputTokens: 400_000,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cachedTokens: 0,
+          cacheTokens: 0,
+          totalTokens: 400_000,
+          lastUsedAt: '2026-05-20 01:23:06',
+        },
+        { accountCycleTokens: 4_000_000, accountCycleCostUsd: 20, accountCycleCalls: 34 }
+      )
+    ).toMatchObject({
+      confidence: 'low',
+      confidenceLabel: '可信度低',
+      localUsedPercent: 10,
+      officialUsedPercent: 80,
+      notice: '本地记录与周限额差异较大，可能缺少历史 Usage 数据',
     });
   });
 
